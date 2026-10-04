@@ -1,0 +1,31 @@
+# =========================
+# MICrONS Project .gitignore
+# =========================
+
+# 1. Massive Data Files & Directories (NEVER COMMIT)
+dataset/
+processed/
+*.h5
+*.npy
+*.pt
+*.pkl
+*.csv
+
+# 2. Python Virtual Environments
+venv/
+env/
+.env/
+
+# 3. Python Cache & Compiled Files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 4. Jupyter Notebooks
+.ipynb_checkpoints/
+
+# 5. OS & IDE Hidden Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

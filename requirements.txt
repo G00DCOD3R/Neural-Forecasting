@@ -1,0 +1,8 @@
+numpy
+pandas
+torch
+h5py
+scipy
+tqdm
+matplotlib
+jupyter

@@ -1,0 +1,73 @@
+# Spatiotemporal Neural Forecasting (MICrONS)
+
+This repository contains the data pipeline for forecasting single-neuron activity by combining functional calcium imaging with physical anatomical wiring (the connectome).
+
+## Repository Structure
+
+```text
+Neural-Forecasting/
+├── dataset/                 # (Must create manually) Folder for the raw H5 file and BossDB .pkl files.
+├── processed/               # (Auto-generated) Folder containing the extracted PyTorch-ready tensors.
+├── .gitignore               # Prevents massive data files from being pushed to GitHub.
+├── build_dataset.py         # Unified script to extract graphs and traces into the processed folder.
+├── example.ipynb            # Example of how to interact with the processed data
+├── sanity_check.py          # Verifies the connectome graph density and overlapping neurons.
+├── reader.py                # Helper module to parse the Hugging Face MICrONS H5 dataset. - copied from the original dataset https://huggingface.co/datasets/NeuroBLab/MICrONS/blob/main/reader.py
+├── requirements.txt         # Python dependencies needed to run the pipeline.
+└── README.md                # This documentation file.           
+```
+
+## 1. Setup
+Create a virtual environment and install the required packages:
+```bash
+python -m venv venv
+source venv/bin/activate  # Or on Windows: .\venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+## 2. Download the Raw Data
+You must place three raw data files into the dataset/ folder.
+
+**A. The Physical Connectome (Topology)**
+These files contain the verified structural mapping of synapses between neurons.
+*   **What it does:** Provides the fixed physical graph adjacency matrices.
+*   **Where to get it:** Download these directly from the public BossDB AWS bucket:
+    *   `node_data_v1.pkl`: Download from `https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/functional_data/functional_connectomics/node_and_edge_properties/v1/node_data_v1.pkl`
+    *   `edge_data_v1.pkl`: Download from `https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/functional_data/functional_connectomics/node_and_edge_properties/v1/edge_data_v1.pkl`
+*   **Where to put it:** Save both `.pkl` files directly into your `dataset` folder.
+
+**B. The Functional Activity (Signals)**
+*   **What it does:** Contains the time-series calcium traces and behavioral variables (treadmill speed, pupil size).
+*   **Where to get it:** Go to the Hugging Face `NeuroBLab/MICrONS` repository and download the `microns.h5` [file](https://huggingface.co/datasets/NeuroBLab/MICrONS/blob/main/microns.h5) (~21GB). 
+*   **Where to put it:** Place `microns.h5` directly inside your `dataset` folder.
+
+
+## 3. Verify the Graph (Optional but Recommended)
+
+Before building the PyTorch tensors, run the sanity check to verify the structural graph density for our specific recording session.
+
+```bash
+python sanity_check.py
+```
+This should confirm that all 1,059 functional neurons have a perfectly mapped physical counterpart with an average of ~25 presynaptic connections per neuron.
+
+## 4. Build the Dataset
+
+Once the raw files are in `dataset/`, run the extraction pipeline. This script intersects the physical graph with the functional recordings and outputs PyTorch-ready tensors.
+When you run the script, pass the structural session ID as `4.0` and the Hugging Face session ID as `4_7` as arguments. (Note: 4.0 refers to Session 4 in the metadata, while 4_7 refers to Session 4, Scan 7 in the H5 file, but they represent the exact same recording block).
+
+```bash
+python build_dataset.py --struct_session 4.0 --hf_session 4_7
+```
+
+This script intersects the physical graph with the functional recordings and will automatically create a `processed/session_4_7/` directory containing:
+*   `X_features.npy` -> Shape [Timesteps, Neurons]: The target calcium signals.
+*   `U_exogenous.npy` -> Shape [Timesteps, 5]: Confounding variables (speed, pupil).
+*   `edge_index.pt` -> Shape [2, Num_Edges]: Directed graph connectivity.
+*   `edge_weight.pt` -> Shape [Num_Edges]: Physical synapse counts.
+*   `conditions.csv` -> Stimulus video IDs per timestep (to avoid train/test leakage).
+
+## 5. Usage in PyTorch Models
+You do not need to parse the massive H5 file during model training. In your PyTorch model scripts, simply use `numpy.load` to load the `X_features.npy` and `U_exogenous.npy` files into memory. For the graph topology, use `torch.load` to load the `edge_index.pt` and `edge_weight.pt` tensors. 
+
+From there, you can map the edge index and weights into a dense adjacency matrix for the Spatiotemporal Graph Neural Networks.
