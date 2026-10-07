@@ -12,6 +12,7 @@ Neural-Forecasting/
 ├── build_dataset.py         # Unified script to extract graphs and traces into the processed folder.
 ├── example.ipynb            # Example of how to interact with the processed data
 ├── sanity_check.py          # Verifies the connectome graph density and overlapping neurons.
+├── cave_sanity_check.py     # Same check using the full CAVE synapse table.
 ├── reader.py                # Helper module to parse the Hugging Face MICrONS H5 dataset. - copied from the original dataset https://huggingface.co/datasets/NeuroBLab/MICrONS/blob/main/reader.py
 ├── requirements.txt         # Python dependencies needed to run the pipeline.
 └── README.md                # This documentation file.           
@@ -49,7 +50,9 @@ Before building the PyTorch tensors, run the sanity check to verify the structur
 ```bash
 python sanity_check.py
 ```
-This should confirm that all 1,059 functional neurons have a perfectly mapped physical counterpart with an average of ~25 presynaptic connections per neuron.
+This should confirm that all 1,059 functional neurons have a physical counterpart. The BossDB v1 graph is very sparse (138 edges, mean in-degree ~0.13), because it only contains synapses from the 148 axons proofread for that release. Rows with `n_synapses == 0` in `edge_data_v1.pkl` are control pairs (`population` = `ADP` or `Same region`), not connections.
+
+`cave_sanity_check.py` runs the same check against the full CAVE synapse table (requires a [CAVE token](https://caveconnectome.github.io/CAVEclient/tutorials/authentication/)). At materialization v1926 it finds 947 edges from proofread axons and 2,908 edges in total, and recovers all 138 BossDB edges.
 
 ## 4. Build the Dataset
 
@@ -57,8 +60,15 @@ Once the raw files are in `dataset/`, run the extraction pipeline. This script i
 When you run the script, pass the structural session ID as `4.0` and the Hugging Face session ID as `4_7` as arguments. (Note: 4.0 refers to Session 4 in the metadata, while 4_7 refers to Session 4, Scan 7 in the H5 file, but they represent the exact same recording block).
 
 ```bash
-python build_dataset.py --struct_session 4.0 --hf_session 4_7
+python build_dataset.py --struct_session 4.0 --hf_session 4_7 --edge_source cave_proofread
 ```
+
+`--edge_source` picks the connectome:
+*   `bossdb` (default): BossDB v1 release edges with at least one synapse (138 edges).
+*   `cave_proofread`: CAVE synapses whose presynaptic axon is proofread (947 edges). Requires a CAVE token.
+*   `cave_all`: all CAVE synapses, including from unproofread axons (2,908 edges; more coverage but some false edges from segmentation errors).
+
+The CAVE version is pinned with `--mat_version` (default 1926), and the chosen source is recorded in `edge_source.txt` in the output folder.
 
 This script intersects the physical graph with the functional recordings and will automatically create a `processed/session_4_7/` directory containing:
 *   `X_features.npy` -> Shape [Timesteps, Neurons]: The target calcium signals.
