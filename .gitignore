@@ -15,6 +15,7 @@ processed/
 venv/
 env/
 .env/
+.venv/
 
 # 3. Python Cache & Compiled Files
 __pycache__/
