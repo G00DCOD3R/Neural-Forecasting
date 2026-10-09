@@ -1,0 +1,6 @@
+=== COPY-LAST BASELINE ===
+MSE: 218.040115 | Pearson r: 0.5087
+
+=== INDEPENDENT GRU BASELINE ===
+MSE: 163.157272 | Pearson r: 0.5614
+
