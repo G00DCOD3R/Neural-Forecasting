@@ -10,6 +10,7 @@ Neural-Forecasting/
 ├── processed/               # (Auto-generated) Folder containing the extracted PyTorch-ready tensors.
 ├── .gitignore               # Prevents massive data files from being pushed to GitHub.
 ├── build_dataset.py         # Unified script to extract graphs and traces into the processed folder.
+├── baselines.py             # Evaluates Copy-Last and Independent GRU baselines with early stopping.
 ├── example.ipynb            # Example of how to interact with the processed data
 ├── sanity_check.py          # Verifies the connectome graph density and overlapping neurons.
 ├── cave_sanity_check.py     # Same check using the full CAVE synapse table.
@@ -82,7 +83,23 @@ This script intersects the physical graph with the functional recordings and wil
 *   `edge_weight.pt` -> Shape [Num_Edges]: Physical synapse counts.
 *   `conditions.csv` -> Stimulus video IDs per timestep (to avoid train/test leakage).
 
-## 5. Usage in PyTorch Models
+## 5. Running the Baselines
+
+To benchmark performance, execute `baselines.py`. This script evaluates two baseline models using a chronological 70% train, 15% validation, and 15% test split:
+
+```bash
+python baselines.py
+```
+### Models Evaluated
+1. **Copy-Last:** Predicts activity at timestamp $t+1$ using the observed value at timestamp $t$, establishing the naive performance floor.
+2. **Independent GRU:** A recurrent neural network that processes 10-frame sliding windows per neuron in isolation alongside exogenous behavioral inputs. Training employs the Adam optimizer, gradient clipping, and validation loss early stopping (patience = 3).
+
+### Execution Outputs
+Each run generates a timestamped directory `results/baselines_YYYYMMDD_HHMMSS/` containing:
+* `best_gru_model.pth`: The model checkpoint corresponding to the lowest validation loss.
+* `metrics_summary.txt`: Final test set Mean Squared Error (MSE) and mean Pearson correlation ($r$) for both baselines.
+
+## 6. Usage in PyTorch Models
 You do not need to parse the massive H5 file during model training. In your PyTorch model scripts, simply use `numpy.load` to load the `X_features.npy` and `U_exogenous.npy` files into memory. For the graph topology, use `torch.load` to load the `edge_index.pt` and `edge_weight.pt` tensors. 
 
 From there, you can map the edge index and weights into a dense adjacency matrix for the Spatiotemporal Graph Neural Networks.
