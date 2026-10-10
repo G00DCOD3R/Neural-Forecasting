@@ -103,3 +103,17 @@ Each run generates a timestamped directory `results/baselines_YYYYMMDD_HHMMSS/` 
 You do not need to parse the massive H5 file during model training. In your PyTorch model scripts, simply use `numpy.load` to load the `X_features.npy` and `U_exogenous.npy` files into memory. For the graph topology, use `torch.load` to load the `edge_index.pt` and `edge_weight.pt` tensors. 
 
 From there, you can map the edge index and weights into a dense adjacency matrix for the Spatiotemporal Graph Neural Networks.
+
+## Population VAR baseline
+
+The activity-only VAR baseline loads the timestamp-corrected processed session
+without needing raw HDF5 or graph authentication during training:
+
+```bash
+./.venv/bin/python models/VAR/train.py --dataset cave_proofread --data-kind microns
+```
+
+See [VAR usage](models/VAR/README.md), [recorded real results](docs/var_results.md)
+and [comparison protocol](docs/comparison_protocol.md). Processed recordings,
+checkpoints and full run exports are ignored by Git. A selected aggregate
+results figure is included under `docs/figures/`.
