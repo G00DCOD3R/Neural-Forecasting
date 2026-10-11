@@ -76,12 +76,12 @@ Both `cave_*` sources require a CAVE token (see `caveclient_setup.ipynb`).
 
 The CAVE version is pinned with `--mat_version` (default 1926), and the chosen source is recorded in `edge_source.txt` in the output folder.
 
-This script intersects the physical graph with the functional recordings and will automatically create a `processed/session_4_7/` directory containing:
-*   `X_features.npy` -> Shape [Timesteps, Neurons]: The target calcium signals.
+This script intersects the physical graph with the functional recordings and will automatically create a `processed/session_4_7/` directory (or `processed/<out_name>/` with `--out_name`, e.g. `session_4_7_cave_proofread`) containing:
+*   `X_features.npy` -> Shape [Timesteps, Neurons]: The target calcium signals, in recording order.
 *   `U_exogenous.npy` -> Shape [Timesteps, 5]: Confounding variables (speed, pupil).
 *   `edge_index.pt` -> Shape [2, Num_Edges]: Directed graph connectivity.
 *   `edge_weight.pt` -> Shape [Num_Edges]: Physical synapse counts.
-*   `conditions.csv` -> Stimulus video IDs per timestep (to avoid train/test leakage).
+*   `conditions.csv` -> One row per timestep: `condition_hash` (stimulus video ID), `trial_id` (chronological trial index), `trial_name` (trial key in the H5 file) and `time` (seconds since the session started). Trials are separate stimulus presentations, with a gap of 1-2 frames between them.
 
 ## 5. Running the Baselines
 

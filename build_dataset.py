@@ -49,11 +49,11 @@ def load_cave_edges(structural_session, nucleus_ids, mat_version, proofread_only
     cave_edges['post_nucleus_id'] = cave_edges['post_pt_root_id'].map(root2nuc)
     return cave_edges[['pre_nucleus_id', 'post_nucleus_id', 'n_synapses']]
 
-def build_dataset(structural_session, hf_session, edge_source='bossdb', mat_version=1926, data_dir='dataset', out_dir='processed'):
+def build_dataset(structural_session, hf_session, edge_source='bossdb', mat_version=1926, data_dir='dataset', out_dir='processed', out_name=None):
     print(f"\n=== BUILDING DATASET FOR SESSION {hf_session} ===")
-    
+
     # 1. Setup Output Directory
-    session_out = os.path.join(out_dir, f"session_{hf_session}")
+    session_out = os.path.join(out_dir, out_name or f"session_{hf_session}")
     os.makedirs(session_out, exist_ok=True)
 
     # 2. Load Structural Data (Nodes & Edges)
@@ -102,7 +102,7 @@ def build_dataset(structural_session, hf_session, edge_source='bossdb', mat_vers
 
     # 4. Extract Functional Time-Series (Signals)
     print("Extracting functional calcium traces (Hugging Face H5)...")
-    trace_list, behavior_list, condition_hashes = [], [], []
+    trial_list = []
 
     with MicronsReader(os.path.join(data_dir, 'microns.h5')) as reader:
         session_hashes = reader.get_hashes_by_session(hf_session, return_unique=True)
@@ -123,17 +123,22 @@ def build_dataset(structural_session, hf_session, edge_source='bossdb', mat_vers
                 pupil_data = trial['pupil'].T
                 treadmill_data = trial['treadmill'].reshape(-1, 1)
                 trial_behavior = np.hstack((treadmill_data, pupil_data))
-                
-                trace_list.append(trial_traces)
-                behavior_list.append(trial_behavior)
-                condition_hashes.extend([hash_val] * trial_traces.shape[0])
+                trial_list.append((trial['stim_times'], hash_val, trial['trial_idx'], trial_traces, trial_behavior))
 
-    X = np.vstack(trace_list)
-    U = np.vstack(behavior_list)
+    # Hashes come from a set, so put the trials back in recording order (stim_times are seconds since session start)
+    trial_list.sort(key=lambda t: t[0][0])
+    X = np.vstack([t[3] for t in trial_list])
+    U = np.vstack([t[4] for t in trial_list])
+    rows = pd.DataFrame({
+        'condition_hash': np.concatenate([[t[1]] * len(t[0]) for t in trial_list]),
+        'trial_id': np.concatenate([[i] * len(t[0]) for i, t in enumerate(trial_list)]),
+        'trial_name': np.concatenate([[t[2]] * len(t[0]) for t in trial_list]),
+        'time': np.concatenate([t[0] for t in trial_list]),
+    })
 
     np.save(os.path.join(session_out, 'X_features.npy'), X)
     np.save(os.path.join(session_out, 'U_exogenous.npy'), U)
-    pd.Series(condition_hashes, name='condition_hash').to_csv(os.path.join(session_out, 'conditions.csv'), index=False)
+    rows.to_csv(os.path.join(session_out, 'conditions.csv'), index=False)
 
     print(f"\n=== SUCCESS ===")
     print(f"Output saved to: {session_out}/")
@@ -147,6 +152,7 @@ if __name__ == "__main__":
     parser.add_argument('--edge_source', type=str, default='bossdb', choices=['bossdb', 'cave_proofread', 'cave_all'],
                         help='bossdb: v1 release edges; cave_proofread: CAVE synapses from proofread axons; cave_all: all CAVE synapses')
     parser.add_argument('--mat_version', type=int, default=1926, help='CAVE materialization version (cave_* edge sources only)')
+    parser.add_argument('--out_name', type=str, default=None, help='Output folder inside processed/ (default: session_<hf_session>)')
     args = parser.parse_args()
 
-    build_dataset(args.struct_session, args.hf_session, args.edge_source, args.mat_version)
+    build_dataset(args.struct_session, args.hf_session, args.edge_source, args.mat_version, out_name=args.out_name)
