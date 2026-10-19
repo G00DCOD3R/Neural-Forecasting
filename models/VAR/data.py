@@ -1,12 +1,15 @@
 """Load chronological processed recordings and normalize using training only."""
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+import sys
 
 import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+from exogenous import load_exogenous  # noqa: E402
 DATASETS = {
     'cave_all': REPO_ROOT / 'processed' / 'session_4_7_cave_all',
     'cave_proofread': REPO_ROOT / 'processed' / 'session_4_7_cave_proofread',
@@ -26,12 +29,23 @@ class SessionData:
     log_transform: bool
     negative_values: int
     directory: Path
+    # exogenous inputs [time, E] (see exogenous.py), E = 0 by default
+    U: np.ndarray = None
+    known_ahead: np.ndarray = field(default_factory=lambda: np.zeros(0, bool))
+    exo_names: list = field(default_factory=list)
 
     def trials(self, which):
         """Return array views of individual trials in one chronological split."""
         if which not in ('train', 'val', 'test'):
             raise ValueError('which must be train, val or test')
         return [self.X[start:stop] for (start, stop), label in zip(self.trial_bounds, self.split)
+                if label == which]
+
+    # [time, E] views of the exogenous inputs, aligned with trials(which)
+    def exo_trials(self, which):
+        if which not in ('train', 'val', 'test'):
+            raise ValueError('which must be train, val or test')
+        return [self.U[start:stop] for (start, stop), label in zip(self.trial_bounds, self.split)
                 if label == which]
 
     def summary(self):
@@ -41,7 +55,9 @@ class SessionData:
                 'rows_per_split': {s: sum(len(x) for x in self.trials(s)) for s in ('train', 'val', 'test')}}
 
 
-def load_session(dataset='cave_all', log_transform=True, val_frac=0.15, test_frac=0.15):
+# video_pcs, behaviour, fill_missing select exogenous inputs (see exogenous.py)
+def load_session(dataset='cave_all', log_transform=True, val_frac=0.15, test_frac=0.15, video_pcs=0,
+                 behaviour=(), fill_missing=False):
     """Read X_features.npy and timestamp-aware conditions.csv.
 
     Split thresholds, log1p/clipping, float32 statistics and std+1e-6 match
@@ -103,8 +119,10 @@ def load_session(dataset='cave_all', log_transform=True, val_frac=0.15, test_fra
     X = (X - mu) / sd
     if not np.isfinite(X).all():
         raise ValueError('Activity became nonfinite during float32 preprocessing')
+    exo = load_exogenous(directory, train_rows, video_pcs, tuple(behaviour), fill_missing)
     return SessionData(X, ids, times, trial_start, np.column_stack([starts, stops]),
-                       split, mu, sd, bool(log_transform), negative_values, directory)
+                       split, mu, sd, bool(log_transform), negative_values, directory,
+                       exo['U'].astype(np.float64), exo['known_ahead'], exo['names'])
 
 
 def main():
