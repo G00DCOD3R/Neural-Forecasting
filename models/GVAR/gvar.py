@@ -3,6 +3,7 @@
 #       + sum_{k,p} g_kp S^k relu(x_{t-p})     leaky: slope h below 0, h + g above
 #       + B [u_t, ..., u_{t-Q+1}] + c           per-neuron exogenous readout and intercept
 # Linear in its parameters, so fitted in closed form.
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -66,10 +67,12 @@ class GVAR(nn.Module):
             x_past = torch.cat([x_past[:, 1:], pred[:, None]], dim=1)
         return torch.stack(preds, dim=1)
 
-    # Least-squares statistics over trials [L, N] (and [L, E]), targets t0..L-1 of each trial
+    # Least-squares statistics over trials [L, N] (and [L, E]), targets t0..L-1 of each trial.
+    # lead > 0 (direct forecasting): target x_t from x_{t-lead-1}, ...; inputs not known ahead are then held at the
+    # origin t-lead, as in evaluation.
     @torch.no_grad()
-    def statistics(self, trials, exo_trials=None):
-        t0 = max(self.P, self.Q - 1) if self.n_exo else self.P
+    def statistics(self, trials, exo_trials=None, lead=0, known_ahead=None):
+        t0 = max(self.P + lead, self.Q - 1) if self.n_exo else self.P + lead
         D = self.taps.numel()
         st = {'FF': torch.zeros(D, D, dtype=torch.float64), 'Fy': torch.zeros(D, dtype=torch.float64), 'T': 0}
         for i, x in enumerate(trials):
@@ -78,7 +81,8 @@ class GVAR(nn.Module):
                 continue
             SkX = torch.stack([self.graph_shifts(xc) for xc in self.channels(x)])  # [C, K+1, L, N]
             # F[c, k, p-1, t] = S^k σ_c(x_{t-p})
-            F = torch.stack([SkX[:, :, t0 - p:L - p] for p in range(1, self.P + 1)], dim=2).reshape(D, L - t0, N)
+            F = torch.stack([SkX[:, :, t0 - lead - p:L - lead - p] for p in range(1, self.P + 1)], dim=2)
+            F = F.reshape(D, L - t0, N)
             y = x[t0:]
             F2 = F.reshape(D, -1).double()
             st['FF'] += F2 @ F2.T
@@ -86,7 +90,7 @@ class GVAR(nn.Module):
             st['T'] += L - t0
             if self.c is not None:
                 # per-neuron design rows [u_t, ..., u_{t-Q+1}, 1]
-                lags = [exo_trials[i][t0 - q:L - q] for q in range(self.Q)] if self.n_exo else []
+                lags = [self.held(exo_trials[i], t0, q, lead, known_ahead) for q in range(self.Q)] if self.n_exo else []
                 U = torch.cat(lags + [torch.ones(L - t0, 1)], 1)
                 E1 = U.shape[1]
                 if 'UU' not in st:
@@ -96,6 +100,17 @@ class GVAR(nn.Module):
                 st['Uy'] += (U.T @ y).double()
                 st['UF'] += (U.T @ F.permute(1, 0, 2).reshape(L - t0, D * N)).reshape(E1, D, N).double()
         return st
+
+    # Rows t0..L-1 of lag q of u, with columns not known ahead taken at the origin t - lead if that is earlier
+    @staticmethod
+    def held(u, t0, q, lead, known_ahead):
+        lag = u[t0 - q:len(u) - q]
+        if q >= lead or known_ahead is None or all(known_ahead):
+            return lag
+        lag = lag.clone()
+        cols = torch.from_numpy(~np.asarray(known_ahead, bool))
+        lag[:, cols] = u[t0 - lead:len(u) - lead][:, cols]
+        return lag
 
     # Ridge solve: (1/TN) |err|^2 + lam |taps|^2 + (lam_exo/N) sum_n |b_n|^2, intercept unpenalised.
     # b_n is eliminated per neuron (shared G = U'U/T + lam_exo I), leaving a Schur complement system for the taps.

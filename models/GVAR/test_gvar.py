@@ -6,6 +6,7 @@ import torch
 
 from gvar import GVAR
 from gvar_nonlinear import NonlinearGVAR
+from gvar_direct import DirectGVAR
 
 
 def random_shift(N, E, seed):
@@ -101,6 +102,40 @@ class TestGVAR(unittest.TestCase):
             torch.testing.assert_close(pred[0, j], step)
             past = torch.cat([past[1:], step[None]])
 
+    # direct head j: brute-force regression of x_{t+j} on the context, behaviour (column 1) held at the origin
+    def test_direct_heads_match_brute_force(self):
+        known = np.array([True, False, True])
+        model = DirectGVAR(self.S, self.P, self.K, 3, True, self.E, self.Q, known_ahead=known)
+        model.solve(model.statistics(self.xs, self.us), lam=0.01, lam_exo=0.3)
+        N, E1 = self.N, self.Q * self.E + 1
+        for j, head in enumerate(model.heads):
+            rows, ys = [], []
+            for x, u in zip(self.xs, self.us):
+                for t in range(max(self.P + j, self.Q - 1), len(x)):
+                    Z = head.features(x[None, t - j - self.P:t - j])[0].reshape(N, -1)
+                    lags = [torch.where(torch.from_numpy(known) | (q >= j), u[t - q], u[t - j]) for q in range(self.Q)]
+                    ulag = torch.cat(lags + [torch.ones(1)])
+                    exo = torch.zeros(N, N, E1)
+                    exo[range(N), range(N)] = ulag
+                    rows.append(torch.cat([Z, exo.reshape(N, -1)], 1))
+                    ys.append(x[t])
+            X, y = torch.cat(rows).double(), torch.cat(ys).double()
+            n, D = len(y), head.taps.numel()
+            pen = torch.cat([torch.full((D,), 0.01), torch.tensor(([0.3 / N] * (E1 - 1) + [0.]) * N)]).double()
+            A = torch.cat([X / n ** 0.5, torch.diag(pen.sqrt())])
+            theta = torch.linalg.lstsq(A, torch.cat([y / n ** 0.5, torch.zeros(len(pen), dtype=torch.float64)])).solution
+            torch.testing.assert_close(head.taps.reshape(-1).double(), theta[:D], atol=1e-5, rtol=1e-4)
+            torch.testing.assert_close(head.B.double(), theta[D:].reshape(N, E1)[:, :-1], atol=1e-5, rtol=1e-4)
+
+    # direct rollout = each head on the same context, nothing fed back
+    def test_direct_rollout_uses_only_the_context(self):
+        model = DirectGVAR(self.S, self.P, self.K, 3, False, self.E, self.Q)
+        model.solve(model.statistics(self.xs, self.us))
+        x, u, t = self.xs[0], self.us[0], 9
+        pred = model.rollout(x[None, t - self.P:t], 3, u[None, t - self.Q + 1:t + 3])[0]
+        for j in range(3):
+            torch.testing.assert_close(pred[j], model.heads[j](x[None, t - self.P:t], u[None, t + j - self.Q + 1:t + j + 1])[0])
+
     # zero-initialised readout: the untrained network equals its G-VAR
     def test_untrained_nonlinear_equals_gvar(self):
         for gated in (False, True):
@@ -114,6 +149,32 @@ class TestGVAR(unittest.TestCase):
                 self.assertIsNotNone(model.readout.W.grad)
                 self.assertIsNone(linear.h.grad)
                 self.assertIsNotNone(model.exo_proj.weight.grad)
+
+    # rollout loss: pure rollout equals the evaluation rollout's error; full teacher forcing equals one-step errors
+    def test_rollout_loss_matches_rollout_and_teacher_forcing(self):
+        from gvar_nonlinear import rollout_loss
+        linear = GVAR(self.S, self.P, self.K, False, self.E, self.Q).fit(self.xs, 0.01, 0.3, self.us)
+        model = NonlinearGVAR(linear, hidden=4, layers=1, exo_dim=3)
+        torch.nn.init.normal_(model.readout.W)
+        x, u, t, H = self.xs[0], self.us[0], 9, 3
+        xp, uw, y = x[None, t - self.P:t], u[None, t - self.Q + 1:t + H], x[None, t:t + H]
+        with torch.no_grad():
+            pure = ((model.rollout(xp, H, uw) - y) ** 2).mean()
+            forced = torch.stack([((model(x[None, t + j - self.P:t + j], u[None, t + j - self.Q + 1:t + j + 1]) - y[:, j]) ** 2).mean()
+                                  for j in range(H)]).mean()
+            torch.testing.assert_close(rollout_loss(model, xp, uw, y), pure)
+            torch.testing.assert_close(rollout_loss(model, xp, uw, y, p_teacher=1.0), forced)
+
+    # direct network: untrained equals the direct G-VAR, one output per horizon
+    def test_untrained_direct_nonlinear_equals_direct_gvar(self):
+        linear = DirectGVAR(self.S, self.P, self.K, 3, False, self.E, self.Q)
+        linear.solve(linear.statistics(self.xs, self.us))
+        model = NonlinearGVAR(linear, hidden=4, layers=2, exo_dim=3)
+        x, u, t = self.xs[0], self.us[0], 9
+        args = (x[None, t - self.P:t], u[None, t - self.Q + 1:t + 3])
+        torch.testing.assert_close(model(*args, 3), linear(*args, 3))
+        self.assertEqual(model(*args, 3).shape, (1, 3, self.N))
+        torch.testing.assert_close(model.rollout(*args[:1], 3, args[1]), linear.rollout(*args[:1], 3, args[1]))
 
     # graph filter layer: sum_k S^k H W_k + b, checked per sample
     def test_graph_filter_matches_explicit_powers(self):
