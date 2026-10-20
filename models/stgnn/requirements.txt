@@ -1,0 +1,9 @@
+# DCRNN and Graph WaveNet. Use Python 3.10–3.13; 3.14 is not supported.
+# torch-scatter and torch-sparse are not on the default index for every PyTorch build.
+# Install this file with the wheel index that matches `torch.__version__`, for example:
+#   python -m pip install --index-url https://pypi.org/simple -r models/stgnn/requirements.txt -f https://data.pyg.org/whl/torch-2.12.1+cpu.html
+torch>=2.2,<2.13
+torch-geometric
+torch-scatter
+torch-sparse
+torch-spatiotemporal
