@@ -1,0 +1,128 @@
+{
+  "phase": "validation_selection_only",
+  "source_run_id": "diagonal_rank_4434eb4e",
+  "control_run_id": "controls_ba3ba28d",
+  "dataset": "cave_proofread",
+  "horizon": 1,
+  "context": 15,
+  "shape": [
+    37840,
+    1059
+  ],
+  "trials_per_split": {
+    "train": 324,
+    "val": 71,
+    "test": 69
+  },
+  "fitted_training_pairs": 21568,
+  "validation_windows": 4602,
+  "prediction_policy": "bounded at transformed raw zero (-training_mu/training_sd)",
+  "models": [
+    {
+      "model": "Dense VAR(2)",
+      "family": "dense_var",
+      "rank": null,
+      "stored_parameters": 2244021,
+      "lambda": 0.0001,
+      "self_lambda": null,
+      "population_lambda": null,
+      "selected_iteration": null,
+      "metrics": {
+        "mse": 0.468003325160064,
+        "rmse": 0.684107685353749,
+        "mae": 0.3873684419160082,
+        "pearson": 0.630975050097693,
+        "r2": 0.3840881017457226
+      }
+    },
+    {
+      "model": "Independent AR(2)",
+      "family": "independent_ar",
+      "rank": null,
+      "stored_parameters": 3177,
+      "lambda": 0.0001,
+      "self_lambda": null,
+      "population_lambda": null,
+      "selected_iteration": null,
+      "metrics": {
+        "mse": 0.46160619947222514,
+        "rmse": 0.6794160724270697,
+        "mae": 0.3950707299500195,
+        "pearson": 0.6504163734474724,
+        "r2": 0.3999468371672582
+      }
+    },
+    {
+      "model": "Diagonal-plus-low-rank VAR(2), rank 16",
+      "family": "diagonal_low_rank",
+      "rank": 16,
+      "stored_parameters": 54009,
+      "lambda": null,
+      "self_lambda": 0.0001,
+      "population_lambda": 0.1,
+      "selected_iteration": 5,
+      "metrics": {
+        "mse": 0.43779611101731836,
+        "rmse": 0.6616616287932362,
+        "mae": 0.3556417095162051,
+        "pearson": 0.6658722458878503,
+        "r2": 0.43722007923823786
+      }
+    },
+    {
+      "model": "Diagonal-plus-low-rank VAR(2), rank 64",
+      "family": "diagonal_low_rank",
+      "rank": 64,
+      "stored_parameters": 206505,
+      "lambda": null,
+      "self_lambda": 0.0001,
+      "population_lambda": 0.1,
+      "selected_iteration": 7,
+      "metrics": {
+        "mse": 0.43502429196854053,
+        "rmse": 0.6595637133503787,
+        "mae": 0.3573097998571135,
+        "pearson": 0.6677766578683392,
+        "r2": 0.43964543903634695
+      }
+    }
+  ],
+  "best_overall_family": "diagonal_low_rank",
+  "stopping_reason": "training_objective_tolerance",
+  "candidate_grid": {
+    "P": 2,
+    "ranks": [
+      16,
+      64
+    ],
+    "population_lambdas": [
+      0.01,
+      0.1
+    ],
+    "self_lambda": 0.0001,
+    "max_iter": 20,
+    "patience": 5,
+    "tol": 1e-06
+  },
+  "input_sha256": {
+    "X_features.npy": "bec7a23dcd3f7f8ed0429a6b2810d160a0c398f64c8bbd1e81efefb61562fcf4",
+    "conditions.csv": "86978eb059cd5043ac0c2e9a1d201727f64ebff2a4c9fa655bdd2614d22ffc67"
+  },
+  "source_sha256_at_experiment": {
+    "select_diagonal_rank.py": "02d686a124ce43eeed67e855f0127b53848315d0af591d525354665bfcde74df",
+    "diagonal_low_rank.py": "3a7b1cd0baf46cbfe40b22badfb15f58d15bbe7dff647462c2dcc78acfd519e8",
+    "compare_controls.py": "e4a2ba207ac02ce88a64abc137b0375f37e7af44207faa3a6ec66e91e5a23bcf",
+    "independent_ar.py": "0416ae8ffbdd863b0411de2b19423639819c22ba0e66577ff2075bef6e4dc162",
+    "prediction_bounds.py": "4d0c132dff7080f94f4917739f9b4aaaa23376c38e2f32b6020424499d423cad",
+    "var_p.py": "58e4436346a9f9ed6b3d4a7b3c126a40c69a9ab38ef88da0ad35a312e32193eb",
+    "data.py": "2a5955610d8772004ad27ef6c953ec6d71e6ff90286d0c650fbe593f71fe03f9",
+    "lag_selection.py": "5128d778ac86e270db19ae1121ceca6755e64d5d0466034a7c6a3e81bf83a5e1",
+    "evaluation.py": "2a6ab7b64d87ed6439bfd4048f34cc890f79f2b34db6f917da11082fe2fb2dd6"
+  },
+  "versions": {
+    "python": "3.11.5",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1"
+  },
+  "scope": "Aggregate validation summary only; no raw data, predictions, checkpoint, or test metrics."
+}

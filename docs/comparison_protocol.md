@@ -1,70 +1,70 @@
 # Forecasting comparison protocol
 
-Proposed settings for comparing population VAR, GVAR and GRU. The group still
-needs to agree on the shared protocol before ranking all models.
+I reviewed this protocol on 2026-10-22 against `main` at `f84864c`, the shared
+loader in `models/common.py`, `models/baselines.py`, graph baselines in
+`models/stgnn/`, and GVAR extensions at `5374dfb`. This replaces my earlier
+2026-10-10 snapshot: the current shared GRU already uses whole-trial splits
+and training-standardized log1p activity, rather than its original raw-activity
+and row-split implementation.
 
-Reviewed 2026-10-10: [GVAR PR #3](https://github.com/G00DCOD3R/Neural-Forecasting/pull/3)
-at `c212580`, and [GRU/copy-last PR #2](https://github.com/G00DCOD3R/Neural-Forecasting/pull/2)
-at `896e5b3`. Branch settings may change after this review.
+## Current comparison settings
 
-## Current settings
-
-| Choice | Population VAR | GVAR PR #3 | GRU PR #2 |
+| Choice | VAR improvements | Shared GRU on main | GVAR / graph baselines |
 |---|---|---|---|
-| Activity scaling | Clipped log1p + training z-score | Same | Raw |
-| Split/boundaries | Explicit trial IDs; whole-trial time split | Same | Row split; stimulus-hash endpoint check |
-| Activity history | One lag | Validation grid, up to 15 lags | Ten frames |
-| External inputs | None | None | Behavior history |
-| Evaluation | 15-frame context; five recursive steps | Same | Ten-frame context; one step |
-| Constant-neuron Pearson | Included as zero | Same intended convention | Constant pairs skipped |
-| Parameters | N*N + N, including neuron intercepts | P*(K+1), shared coefficients, no intercept | Shared GRU and output layer |
-| Validation selection | Ridge penalty | Temporal/graph orders P/K; fixed ridge | Best validation epoch |
+| Activity | Clipped log1p; training-only per-neuron z-score | Same convention | Same convention; verify flags |
+| Split | Chronological whole trials | Same convention | Same session convention |
+| History | Common context 15; selected P=2 | 15 frames | GVAR order selected; STGNN history defaults to 15 |
+| Inputs | Activity only; no anatomical graph | Activity only unless `--exog` | Structural/learned graph; optional exogenous inputs |
+| Latest result phase | One-step validation only | Saved reports include test results | Depends on run |
+| Prediction bound | Raw/bounded paired scores; bounded selection | No explicit lower bound in evaluation | Original main GVAR is unbounded; extensions can clamp; verify each run |
+| Multistep | Recursive implementation; latest comparison is h=1 | Current baseline h=1 | Recursive/direct GVAR extensions; direct STGNN forecasts |
 
-On the shared session, VAR and GVAR produce identical normalized activity,
-trial IDs and split labels, with 4,602 one-step validation origins and 4,434
-five-step test origins. A first-test-trial check confirmed matching baseline
-MSE/MAE within float32 tolerance. Pearson differed by up to 0.000337 due to
-numerical precision; all baseline metrics agreed within 1e-10 when GVAR's
-calculation used float64. Use consistent precision and constant-neuron handling
-when interpreting small metric differences.
+VAR learns predictive population relationships from activity; absence of an
+anatomical graph does not make its neurons independent. The independent AR
+control removes population inputs and fits neuron-specific coefficients.
 
-## Choices to agree on
+## Alignment required before ranking models
 
-1. Use the same timestamp-corrected session, neuron order and explicit trial IDs.
-   Stimulus hashes identify movies, not unique presentations; endpoint equality
-   alone does not establish that a whole window stays inside one trial.
-2. Use training-only normalization and whole-trial chronological splits. The
-   current VAR/GVAR settings provide a working reference. Raw-space GRU MSE
-   cannot be compared directly with normalized VAR/GVAR MSE.
-3. Establish an activity-only comparison. If behavior inputs are included,
-   label that extension and give compared models equivalent input access.
-4. Use identical validation and test target origins. A five-step comparison
-   requires the same future-target availability and recursive input policy.
-   A separate one-step comparison is possible before extending GRU.
-5. Choose settings using validation only, and report lag orders, parameter
-   counts and selection procedures. Numerical ridge penalties are not
-   interchangeable between these parameterizations.
-6. Include GVAR K=0 and randomized-graph controls. Current randomization preserves
-   edge count and shuffles weights, but does not preserve individual degrees.
-   Multiple random seeds would strengthen this control.
-7. State the generalization target: 51 of 69 test stimulus IDs also occur in
-   training. This split evaluates later trials, not unseen movies. Forecast
-   windows overlap, so they are not independent samples for uncertainty estimates.
+1. Use identical timestamp-corrected activity, neuron order and trial metadata.
+   Stimulus hashes identify videos, not unique presentations. Windows must
+   stay inside a trial and split.
+2. Fit normalization on training rows only. The shared session has 324 train /
+   71 validation / 69 test trials. At context 15, h=1 has 4,602 validation and
+   4,710 test windows. An h=5 test comparison has 4,434 origins instead.
+3. The new controlled VAR fits use identical 21,568 training targets after
+   context 15. Original VAR1 used 26,104 targets after lag 1. Report training
+   origin choices even when evaluation origins match.
+4. Agree the primary forecast horizon and validation selection metric before
+   final test evaluation. One-step MSE and average recursive five-step MSE are
+   different selection criteria. Use identical forecast origins and targets.
+5. Report output bounds and whether they are fed back during recursion. Under
+   clipped-log1p activity, raw zero maps to `-mu/sd` per neuron. Negative
+   standardized activity is valid; do not clamp it at zero.
+6. Keep activity-only and exogenous comparisons separate. Future stimulus
+   frames known by design differ from future behavior unavailable at the
+   forecast origin. Give compared models equivalent information access.
+7. Match metric definitions, precision and constant-neuron handling. Report
+   MSE, MAE, RMSE, macro Pearson and macro R2 where available. Constant pairs
+   contribute zero Pearson under the epsilon convention. MSE is not accuracy.
+8. Select parameters/checkpoints on validation only. The latest VAR scores
+   are validation results; do not rank them against GRU/GNN test scores.
 
-## Preliminary GVAR controls
+## Interpretation
 
-Andrei's saved notebook reports the following rounded results; these GVAR
-experiments were not rerun for this comparison. Confirm exact run provenance
-before combining them into the final report.
+- Structure and regularization changed together in the latest VAR model.
+  A full-rank population component with matched separate self/population
+  penalties would help isolate the rank constraint's contribution.
+- The added component can contain diagonal entries, and self-history is
+  updated jointly. Its gain is not a pure measure of cross-neuron information
+  or causal coupling. Stored factor counts include redundancy.
+- Anatomical benefit needs matched controls: GVAR K=0, randomized graphs and
+  fixed versus learned graph variants. Matching random edge count alone
+  does not preserve individual degrees.
+- The original audit found 51 of 69 test stimulus hashes also in training.
+  The split evaluates later trials, not unseen videos or another animal.
+- Overlapping windows are not independent uncertainty samples. Repeated
+  validation selection makes the selected score optimistic; final
+  generalization claims require the agreed test evaluation.
 
-| Model | Lags P | Graph order K | h=1 MSE | h=5 MSE |
-|---|---:|---:|---:|---:|
-| Population VAR | 1 | Not applicable | 0.496943 | 0.733091 |
-| GVAR, proofread connectome | 15 | 3 | 0.4288 | 0.7337 |
-| GVAR, no graph | 15 | 0 | 0.4292 | 0.7341 |
-| GVAR, proofread random graph | 15 | 3 | 0.4291 | 0.7340 |
-
-The recorded anatomical benefit within GVAR is small. Its larger difference
-against VAR(1) cannot be attributed solely to wiring because temporal history
-and parameterization also differ. A validation-only VAR lag search is a
-possible follow-up after the shared comparison protocol is agreed.
+See [current VAR validation results](var_improvements.md) and
+[the historical VAR1 test report](var_results.md).

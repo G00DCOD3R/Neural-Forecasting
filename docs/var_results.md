@@ -1,6 +1,8 @@
-# Baturalp: MICrONS VAR baseline result
+# Original MICrONS VAR baseline result
 
-Completed 2026-10-10. This is a real single-session forecasting experiment.
+I completed this original VAR(1) experiment on 2026-10-10.
+For my subsequent validation-only improvements, see [VAR improvements](var_improvements.md).
+This is a real single-session forecasting experiment.
 VAR uses population activity without anatomical graph constraints. These scores
 do not establish whether the connectome improves forecasting.
 
