@@ -121,6 +121,7 @@ low-rank population component; it uses no anatomical graph.
 
 Continue with the [diagonal-plus-low-rank workflow](models/VAR/README.md#latest-workflow-from-a-processed-session).
 See [current validation results](docs/var_improvements.md),
+[frozen one-step test results](docs/var_test_results.md),
 [original VAR1 test results](docs/var_results.md), and the
 [comparison protocol](docs/comparison_protocol.md). Recordings, checkpoints
 and full run exports stay ignored; aggregate results and figures are shared.

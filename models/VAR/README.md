@@ -2,7 +2,8 @@
 
 I implement activity-only VAR baselines without anatomical connectivity. My
 latest extension keeps independent self-history terms and adds a low-rank
-population component. See [validation results](../../docs/var_improvements.md).
+population component. See [validation results](../../docs/var_improvements.md) and the subsequent
+[frozen one-step test report](../../docs/var_test_results.md).
 
 ## Latest workflow from a processed session
 
@@ -135,7 +136,7 @@ A selected aggregate figure is included with the
 ## Verification and examples
 
 ```bash
-./.venv/bin/python -m unittest models.VAR.test_var models.VAR.test_data models.VAR.test_train models.VAR.test_var_p models.VAR.test_reduced_rank models.VAR.test_controls models.VAR.test_diagonal_low_rank -v
+./.venv/bin/python -m unittest models.VAR.test_var models.VAR.test_data models.VAR.test_train models.VAR.test_var_p models.VAR.test_reduced_rank models.VAR.test_controls models.VAR.test_diagonal_low_rank models.VAR.test_evaluate_test -v
 ./.venv/bin/python models/VAR/pipeline_example.py
 ```
 
@@ -363,3 +364,29 @@ Export a figure and aggregate results from a completed run without refitting:
 
 The default export location is that ignored run's `figures/` directory. Use
 `--output-dir` and `--summary-json` for explicit shareable export locations.
+
+## Frozen one-step test evaluation
+
+After fixing a configuration from validation, score its saved checkpoint and
+both selected controls without refitting or changing parameters:
+
+```bash
+./.venv/bin/python models/VAR/evaluate_test.py \
+  --dataset cave_proofread \
+  --run-dir models/VAR/runs/diagonal_reference \
+  --controls-run models/VAR/runs/controls_reference
+```
+
+The evaluator verifies source/input fingerprints, checkpoint settings and
+training-only preprocessing, and replays the recorded validation scores. It
+writes `frozen_protocol.json` before computing test forecasts, then scores
+all three frozen models and copy-last/mean on identical one-step test windows.
+The bounded prediction policy was selected during validation; unbounded
+scores are a predeclared diagnostic, not another selection criterion.
+
+The ignored `runs/test_one_step_<id>/` folder contains the frozen protocol,
+`results.json` and `metrics_summary.txt`. There are no rank, penalty or horizon
+selection flags. Nonempty output directories are not overwritten. See the
+[test report](../../docs/var_test_results.md) for the recorded results and
+comparison limits. These test scores must not drive further tuning of this
+frozen comparison. A future five-step task requires a separately agreed protocol.

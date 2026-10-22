@@ -5,10 +5,10 @@ tested additional lags, a rank constraint on the entire coefficient matrix,
 an independent self-history control, and a model with separate self-history
 terms plus a low-rank population component.
 
-**These are one-step validation results. I have not evaluated the new
-candidates on the test split.** The original VAR1 test report is
-[separate](var_results.md); these scores should not be ranked directly
-against the group's GRU/GNN test scores.
+**These are one-step validation results.** I subsequently evaluated the frozen
+selected configuration: see the [one-step test report](var_test_results.md).
+The original VAR1 test report is [separate](var_results.md). These validation
+scores should not be ranked directly against the group's GRU/GNN test scores.
 
 ## Latest matched comparison
 

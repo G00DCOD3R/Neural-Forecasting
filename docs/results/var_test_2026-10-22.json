@@ -1,0 +1,175 @@
+{
+  "phase": "frozen_test_evaluation",
+  "test_run_id": "test_one_step_57614e4a",
+  "selected_run_id": "diagonal_rank_4434eb4e",
+  "controls_run_id": "controls_ba3ba28d",
+  "context": 15,
+  "horizon": 1,
+  "primary_policy": "bounded",
+  "test_trials": 69,
+  "test_windows": 4710,
+  "selected_configuration": {
+    "P": 2,
+    "rank": 64,
+    "self_lambda": 0.0001,
+    "population_lambda": 0.1,
+    "selected_iteration": 7,
+    "parameter_count": 206505
+  },
+  "control_lambdas": {
+    "dense_var": 0.0001,
+    "independent_ar": 0.0001
+  },
+  "input_sha256": {
+    "X_features.npy": "bec7a23dcd3f7f8ed0429a6b2810d160a0c398f64c8bbd1e81efefb61562fcf4",
+    "conditions.csv": "86978eb059cd5043ac0c2e9a1d201727f64ebff2a4c9fa655bdd2614d22ffc67"
+  },
+  "checkpoint_sha256": {
+    "diagonal_low_rank": "0f2738166e0031e1ffda45cc3dbb933b404185e7dd3ddeb69ed8f3eaf8b389e3",
+    "dense_var": "db21bcf33c7cdd142b10c8ec99686df8ea69cab482ad06e4f13967d19b0e628a",
+    "independent_ar": "445f2c2ab35e9317edc95d8c3aa616facd4fd7bd6d0833d520b9883e9cdaf6d8"
+  },
+  "evaluation_source_sha256": "8642ed790f63519211b42fe291e4aacc67160da13052f741c6d63b1ef8cc9eca",
+  "model_source_sha256": {
+    "select_diagonal_rank.py": "02d686a124ce43eeed67e855f0127b53848315d0af591d525354665bfcde74df",
+    "diagonal_low_rank.py": "3a7b1cd0baf46cbfe40b22badfb15f58d15bbe7dff647462c2dcc78acfd519e8",
+    "compare_controls.py": "e4a2ba207ac02ce88a64abc137b0375f37e7af44207faa3a6ec66e91e5a23bcf",
+    "independent_ar.py": "0416ae8ffbdd863b0411de2b19423639819c22ba0e66577ff2075bef6e4dc162",
+    "prediction_bounds.py": "4d0c132dff7080f94f4917739f9b4aaaa23376c38e2f32b6020424499d423cad",
+    "var_p.py": "58e4436346a9f9ed6b3d4a7b3c126a40c69a9ab38ef88da0ad35a312e32193eb",
+    "data.py": "2a5955610d8772004ad27ef6c953ec6d71e6ff90286d0c650fbe593f71fe03f9",
+    "lag_selection.py": "5128d778ac86e270db19ae1121ceca6755e64d5d0466034a7c6a3e81bf83a5e1",
+    "evaluation.py": "2a6ab7b64d87ed6439bfd4048f34cc890f79f2b34db6f917da11082fe2fb2dd6"
+  },
+  "versions": {
+    "python": "3.11.5",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1"
+  },
+  "refit": false,
+  "test_based_selection": false,
+  "models": {
+    "dense_var": {
+      "parameter_count": 2244021,
+      "test": {
+        "unbounded": {
+          "mse": 0.4858871527169462,
+          "rmse": 0.6970560613874226,
+          "mae": 0.4337174568199566,
+          "pearson": 0.5925082300316479,
+          "r2": 0.31777017342254993
+        },
+        "bounded": {
+          "mse": 0.45927481148377897,
+          "rmse": 0.6776981713740852,
+          "mae": 0.38326300294877763,
+          "pearson": 0.6216664309792657,
+          "r2": 0.36459806332171774
+        }
+      },
+      "validation": {
+        "unbounded": {
+          "mse": 0.49506032257339355,
+          "rmse": 0.7036052320537374,
+          "mae": 0.4392127121261157,
+          "pearson": 0.6025701165501319,
+          "r2": 0.3400405448433747
+        },
+        "bounded": {
+          "mse": 0.468003325160064,
+          "rmse": 0.684107685353749,
+          "mae": 0.3873684419160082,
+          "pearson": 0.630975050097693,
+          "r2": 0.3840881017457226
+        }
+      }
+    },
+    "independent_ar": {
+      "parameter_count": 3177,
+      "test": {
+        "unbounded": {
+          "mse": 0.46395938991505287,
+          "rmse": 0.6811456451560509,
+          "mae": 0.40476769691744163,
+          "pearson": 0.632230734090022,
+          "r2": 0.37071578149677004
+        },
+        "bounded": {
+          "mse": 0.45190247822601837,
+          "rmse": 0.6722369212011629,
+          "mae": 0.39173502966120266,
+          "pearson": 0.6448880391279416,
+          "r2": 0.3853947680929573
+        }
+      },
+      "validation": {
+        "unbounded": {
+          "mse": 0.4740846083531444,
+          "rmse": 0.6885380224454888,
+          "mae": 0.40830523192727974,
+          "pearson": 0.6376304876814455,
+          "r2": 0.38528431323355844
+        },
+        "bounded": {
+          "mse": 0.46160619947222514,
+          "rmse": 0.6794160724270697,
+          "mae": 0.3950707299500195,
+          "pearson": 0.6504163734474724,
+          "r2": 0.3999468371672582
+        }
+      }
+    },
+    "diagonal_low_rank": {
+      "parameter_count": 206505,
+      "test": {
+        "unbounded": {
+          "mse": 0.4403160199407765,
+          "rmse": 0.6635631243075345,
+          "mae": 0.3758503696083319,
+          "pearson": 0.644898094386538,
+          "r2": 0.4066476165416277
+        },
+        "bounded": {
+          "mse": 0.42645963629076433,
+          "rmse": 0.6530387708940139,
+          "mae": 0.3533263903214152,
+          "pearson": 0.6609795711727894,
+          "r2": 0.4266119907592463
+        }
+      },
+      "validation": {
+        "unbounded": {
+          "mse": 0.44893461259373996,
+          "rmse": 0.6700258297959415,
+          "mae": 0.38079697266250195,
+          "pearson": 0.6520608723426601,
+          "r2": 0.42054090571446007
+        },
+        "bounded": {
+          "mse": 0.43502429196854053,
+          "rmse": 0.6595637133503787,
+          "mae": 0.3573097998571135,
+          "pearson": 0.6677766578683392,
+          "r2": 0.43964543903634695
+        }
+      }
+    }
+  },
+  "baselines": {
+    "copy_last": {
+      "mse": 0.6095536244218698,
+      "rmse": 0.7807391526123625,
+      "mae": 0.3008473500863301,
+      "pearson": 0.5986862158001799,
+      "r2": 0.19632983765852674
+    },
+    "training_mean": {
+      "mse": 0.7902222174390656,
+      "rmse": 0.8889444400180844,
+      "mae": 0.6195340029860456,
+      "pearson": 0.0,
+      "r2": -0.1201175740351439
+    }
+  },
+  "scope": "One session, later trials; overlapping windows; settings fixed by prior validation. No uncertainty interval."
+}
