@@ -202,7 +202,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--model', choices=('dcrnn', 'graph_wavenet'), default='dcrnn')
     parser.add_argument('--dataset', default='cave_proofread')
-    parser.add_argument('--graph', choices=('connectome', 'random'), default='connectome')
+    parser.add_argument('--graph', choices=('connectome', 'random', 'rewired'), default='connectome')
     parser.add_argument('--history', type=int, default=15)
     parser.add_argument('--horizon', type=int, default=1)
     parser.add_argument('--hidden', type=int, default=32)
