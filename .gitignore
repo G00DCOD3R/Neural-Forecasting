@@ -13,7 +13,6 @@ processed/
 
 # 2. Python Virtual Environments
 venv/
-venv-stgnn/
 env/
 .env/
 .venv/
