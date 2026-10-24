@@ -24,7 +24,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 import torch
+from scipy.sparse.csgraph import connected_components
 
 MODELS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(MODELS_DIR / 'GVAR'))
@@ -103,7 +105,12 @@ class GVARPredictor:
 
 
 class GNNPredictor:
-    """DCRNN or Graph WaveNet from models/stgnn, run on the whole graph for every ablation."""
+    """DCRNN or Graph WaveNet from models/stgnn, run for every ablation.
+
+    Both models only mix neurons through the graph, so removing an edge cannot change neurons outside its
+    connected component. Each ablation runs on the components of the targets only, which gives the same
+    forecasts (unless Graph WaveNet learned its own adjacency, which links every pair of neurons).
+    """
 
     def __init__(self, run_dir, data, past, exog, device, batch_size):
         spec = importlib.util.spec_from_file_location('stgnn_train', MODELS_DIR / 'stgnn' / 'train.py')
@@ -125,25 +132,41 @@ class GNNPredictor:
         self.model.cache_support = False
         self.edge_index, self.edge_weight = load_graph(data['data_dir'], self.N, self.cfg['graph'], self.cfg['seed'])
         self.edge_weight = self.edge_weight.float()
-        self.stgnn, self.past, self.exog = stgnn, past[:, -self.cfg['history']:], exog
+        self.stgnn, self.past, self.exog = stgnn, past[:, -self.cfg['history']:].to(device), exog
         self.device, self.batch_size = device, batch_size
+        if res['learned_adjacency']:
+            self.component = torch.zeros(self.N, dtype=torch.long)
+        else:
+            adj = sp.coo_matrix((np.ones(self.edge_index.shape[1]), self.edge_index.numpy()), shape=(self.N, self.N))
+            self.component = torch.from_numpy(connected_components(adj, directed=False)[1])
+
+    def nodes_for(self, targets):
+        """Neurons in the same connected components as `targets`, sorted."""
+        return torch.nonzero(torch.isin(self.component, self.component[targets])).flatten()
 
     @torch.no_grad()
     def predict(self, keep, targets):
-        ei, ew = (self.edge_index, self.edge_weight) if keep is None else (self.edge_index[:, keep], self.edge_weight[keep])
-        ei, ew = ei.to(self.device), ew.to(self.device)
+        keep = torch.ones(self.edge_index.shape[1], dtype=torch.bool) if keep is None else keep.clone()
+        nodes = self.nodes_for(targets)
+        keep &= torch.isin(self.edge_index[0], nodes)  # same component, so the target is in `nodes` too
+        relabel = torch.full((self.N,), -1, dtype=torch.long)
+        relabel[nodes] = torch.arange(len(nodes))
+        ei, ew = relabel[self.edge_index[:, keep]].to(self.device), self.edge_weight[keep].to(self.device)
+        pick = relabel[targets]
         for m in self.model.modules():
             if hasattr(m, '_support'):
                 m._support = None
         out = []
         for i in range(0, len(self.past), self.batch_size):
             u = None if self.exog is None else self.exog[i:i + self.batch_size].to(self.device)
-            pred = self.stgnn.predict(self.model, self.past[i:i + self.batch_size].to(self.device), u, ei, ew)
-            out.append(pred[:, 0, targets].cpu())
+            past = self.past[i:i + self.batch_size, :, nodes.to(self.device)]
+            pred = self.stgnn.predict(self.model, past, u, ei, ew)
+            out.append(pred[:, 0, pick].cpu())
         return torch.cat(out)
 
     def affected(self, keep):
-        return torch.arange(self.N)  # message passing over 15 steps can reach anywhere
+        # message passing over 15 steps can reach the whole component
+        return self.nodes_for(self.edge_index[0, ~keep])
 
 
 def per_trial(values, trial_index, n_trials):
@@ -249,7 +272,7 @@ def parse_args():
     parser.add_argument('--max_edges', type=int, default=None, help='only the first n edges, for quick tests')
     parser.add_argument('--n_boot', type=int, default=1000)
     parser.add_argument('--batch_size', type=int, default=512)
-    parser.add_argument('--device', default='cpu')
+    parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     return parser.parse_args()
 
 

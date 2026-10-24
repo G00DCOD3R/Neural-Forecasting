@@ -23,17 +23,27 @@ python models/explainability/influence.py --model gvar --run cave_proofread_conn
 python models/explainability/influence.py --model gvar --run cave_proofread_rewired
 python models/explainability/hubs.py --run gvar_cave_proofread_connectome --null gvar_cave_proofread_rewired
 
-# DCRNN (the same for graph_wavenet, trained with --no_learned_adjacency)
-python models/stgnn/train.py --model dcrnn --dataset cave_proofread --graph connectome
-python models/stgnn/train.py --model dcrnn --dataset cave_proofread --graph rewired
-python models/explainability/influence.py --model dcrnn --run cave_proofread_dcrnn_connectome --stride 4
-python models/explainability/influence.py --model dcrnn --run cave_proofread_dcrnn_rewired --stride 4
-python models/explainability/hubs.py --run dcrnn_cave_proofread_dcrnn_connectome --null dcrnn_cave_proofread_dcrnn_rewired
+# DCRNN and Graph WaveNet: all steps below for both models, skipping what already exists
+PYTHON=../venv-stgnn/Scripts/python.exe bash models/explainability/run_gnn.sh
+
+# DCRNN by hand (the connectome run cave_proofread_dcrnn_h1 is already trained)
+python models/stgnn/train.py --model dcrnn --dataset cave_proofread --graph rewired --run_name cave_proofread_dcrnn_rewired_h1
+python models/explainability/influence.py --model dcrnn --run cave_proofread_dcrnn_h1 --stride 4
+python models/explainability/influence.py --model dcrnn --run cave_proofread_dcrnn_rewired_h1 --stride 4
+python models/explainability/hubs.py --run dcrnn_cave_proofread_dcrnn_h1 --null dcrnn_cave_proofread_dcrnn_rewired_h1
+
+# Graph WaveNet, fixed adjacency only (cave_proofread_gwn_fixed_h1)
+python models/stgnn/train.py --model graph_wavenet --dataset cave_proofread --graph rewired --no_learned_adjacency --run_name cave_proofread_gwn_fixed_rewired_h1
+python models/explainability/influence.py --model graph_wavenet --run cave_proofread_gwn_fixed_h1 --stride 4
+python models/explainability/influence.py --model graph_wavenet --run cave_proofread_gwn_fixed_rewired_h1 --stride 4
+python models/explainability/hubs.py --run graph_wavenet_cave_proofread_gwn_fixed_h1 --null graph_wavenet_cave_proofread_gwn_fixed_rewired_h1
 ```
+
+The GNN steps need the torch-spatiotemporal environment from `models/stgnn/requirements.txt` (torch < 2.13), not the main `venv`. `gnn_influence.ipynb` installs it and runs `run_gnn.sh` on a Kaggle or Colab GPU, saving each finished step to Drive or `/kaggle/working`.
 
 `--graph rewired` keeps every neuron's in- and out-degree and shuffles who connects to whom, so the random graph has exactly the same wiring concentration as the connectome. `--graph random` places the same number of edges between random pairs.
 
-G-VAR is linear, so `influence.py` computes ablations in closed form and the whole analysis takes about 15 seconds. The GNNs need one full forward pass over the test set per removed edge (947 edges + 104 neurons on `cave_proofread`, 2,908 + 715 on `cave_all`). `--stride 4` uses every fourth test window, which overlap heavily anyway. `--max_edges` runs a quick test.
+G-VAR is linear, so `influence.py` computes ablations in closed form and the whole analysis takes about 15 seconds. The GNNs need one forward pass over the test set per removed edge (947 edges + 104 neurons on `cave_proofread`, 2,908 + 715 on `cave_all`). Each pass only runs on the connected component of the removed edge, since nothing outside it can change; on `cave_proofread` that is 539 of the 1,059 neurons. On a 12-core CPU with `--stride 4` this takes about 7 hours per DCRNN run and 11 hours per Graph WaveNet run. `--stride 4` uses every fourth test window, which overlap heavily anyway. `--max_edges` runs a quick test.
 
 Outputs go to `models/explainability/runs/<model>_<run>/`: `edges.csv`, `neurons.csv`, `trial_sums.npz` (per-trial sums for the bootstrap), `meta.json`, `hubs.json` and `concentration.png`.
 
