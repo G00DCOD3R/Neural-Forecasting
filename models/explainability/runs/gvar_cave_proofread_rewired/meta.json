@@ -1,0 +1,26 @@
+{
+  "model": "gvar",
+  "run": "cave_proofread_rewired",
+  "run_config": {
+    "dataset": "cave_proofread",
+    "graph": "rewired",
+    "shift": "mean",
+    "undirected": false,
+    "P": null,
+    "K": null,
+    "lam": 0.001,
+    "horizon": 1,
+    "log_transform": true,
+    "val_frac": 0.15,
+    "test_frac": 0.15,
+    "seed": 0
+  },
+  "num_nodes": 1059,
+  "stride": 1,
+  "n_windows": 4710,
+  "n_trials": 69,
+  "n_edges_measured": 947,
+  "complete": true,
+  "base_test_mse": 0.42721450328826904,
+  "seconds": 11.926010131835938
+}
