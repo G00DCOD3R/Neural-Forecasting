@@ -36,7 +36,7 @@ DEFAULTS = dict(dataset='cave_proofread', graph='connectome', shift='mean', undi
                 select_horizon=5, clamp=True, intercept=True, leaky=False, video_pcs=0, behaviour='', Q=None,
                 lam_exo=None, nl_layers=0, nl_hidden=32, nl_K=None, gated=False, epochs=30, lr=1e-3,
                 weight_decay=1e-4, batch_size=64, patience=3, device='auto', strategy='recursive', nl_loss='one_step',
-                ss_epochs=0, finetune_linear=False)
+                ss_epochs=0, finetune_linear=False, nl_stop='avg')
 
 
 def eval_windows(data, which, horizon):
@@ -90,6 +90,8 @@ def default_run_name(cfg):
         name += '_leaky'
     if cfg['nl_layers']:
         name += f"_nl{cfg['nl_layers']}" + ('_gated' if cfg['gated'] else '')
+    if cfg['nl_stop'] == 'h1' and (cfg['nl_layers'] or cfg['finetune_linear']):
+        name += '_h1stop'
     if cfg['finetune_linear']:
         name += '_ft'
     if cfg['strategy'] == 'direct':
@@ -101,6 +103,56 @@ def default_run_name(cfg):
     if cfg['behaviour']:
         name += '_' + cfg['behaviour'].replace(',', '+')
     return name
+
+
+def linear_model(S, cfg, data, P, K, Q):
+    E = data['U'].shape[1]
+    if cfg['strategy'] == 'direct':
+        model = DirectGVAR(S, P, K, max(cfg['horizon'], cfg['select_horizon']), cfg['leaky'], E, Q,
+                           cfg['intercept'], data['known_ahead'])
+    else:
+        model = GVAR(S, P, K, cfg['leaky'], E, Q, cfg['intercept'])
+    model.floor = data['floor'] if cfg['clamp'] else None
+    return model
+
+
+def nonlinear_model(linear, cfg):
+    return gvar_nonlinear.NonlinearGVAR(copy.deepcopy(linear), cfg['nl_hidden'], cfg['nl_layers'], cfg['nl_K'],
+                                        cfg['gated'], finetune_linear=cfg['finetune_linear'])
+
+
+# Rebuild a saved run's model from its results.json and model.pt
+def load_run(run_name, data):
+    run_dir = RUNS_DIR / run_name
+    with open(run_dir / 'results.json') as f:
+        results = json.load(f)
+    cfg = {**DEFAULTS, **results['config']}
+    model = linear_model(build_shift(data, cfg), cfg, data, results['P'], results['K'], results['Q'])
+    if cfg['nl_layers'] or cfg['finetune_linear']:
+        model = nonlinear_model(model, cfg)
+    model.load_state_dict(torch.load(run_dir / 'model.pt', map_location='cpu'))
+    if results['nonlinear']:
+        model = model.to(gvar_nonlinear.device(cfg['device']))
+    return model, results
+
+
+# Load the saved run if its config matches cfg, otherwise fit (or train) and save it
+def run_or_load(cfg=None, data=None, run_name=None, retrain=False, verbose=True):
+    cfg = {**DEFAULTS, **(cfg or {})}
+    run_name = run_name or default_run_name(cfg)
+    saved = RUNS_DIR / run_name / 'results.json'
+    if saved.exists() and not retrain:
+        with open(saved) as f:
+            saved_cfg = json.load(f)['config']
+        # runs saved before an option existed used its default
+        if all(saved_cfg.get(k, DEFAULTS[k]) == v for k, v in cfg.items() if k != 'device'):
+            if data is None:
+                data = load_data(cfg['dataset'], cfg['log_transform'], cfg['val_frac'], cfg['test_frac'],
+                                 cfg['video_pcs'], tuple(b for b in cfg['behaviour'].split(',') if b))
+            return load_run(run_name, data)
+        if verbose:
+            print(f'{run_name}: saved config differs, retraining')
+    return run(cfg, data, run_name, verbose)
 
 
 def run(cfg=None, data=None, run_name=None, verbose=True):
@@ -126,12 +178,7 @@ def run(cfg=None, data=None, run_name=None, verbose=True):
     lam_exos = [cfg['lam_exo']] if cfg['lam_exo'] is not None else LAM_EXO_GRID if E else [0.0]
     grid, best = [], None
     for P, K, Q in itertools.product(Ps, Ks, Qs):
-        if cfg['strategy'] == 'direct':
-            model = DirectGVAR(S, P, K, max(cfg['horizon'], cfg['select_horizon']), cfg['leaky'], E, Q,
-                               cfg['intercept'], data['known_ahead'])
-        else:
-            model = GVAR(S, P, K, cfg['leaky'], E, Q, cfg['intercept'])
-        model.floor = data['floor'] if cfg['clamp'] else None
+        model = linear_model(S, cfg, data, P, K, Q)
         st = model.statistics(train_x, train_u)  # penalties only change the solve
         for lam_exo in lam_exos:
             model.solve(st, cfg['lam'], lam_exo)
@@ -149,16 +196,16 @@ def run(cfg=None, data=None, run_name=None, verbose=True):
     linear, nonlinear = model, None
     if cfg['nl_layers'] or cfg['finetune_linear']:  # nl_layers 0 + finetune_linear: gradient-trained linear G-VAR
         dev = gvar_nonlinear.device(cfg['device'])
-        model = gvar_nonlinear.NonlinearGVAR(copy.deepcopy(linear), cfg['nl_hidden'], cfg['nl_layers'], cfg['nl_K'],
-                                             cfg['gated'], finetune_linear=cfg['finetune_linear']).to(dev)
+        model = nonlinear_model(linear, cfg).to(dev)
         loss = 'direct' if cfg['strategy'] == 'direct' else cfg['nl_loss']
         if verbose:
             print(f"nonlinear G-VAR on {dev}: {cfg['nl_layers']} layers x {cfg['nl_hidden']}, gated={cfg['gated']}, "
                   f"{model.parameter_count} trainable parameters")
 
+        # early stopping uses val_mse: h=1..select_horizon by default, h=1 with nl_stop='h1'
         def score(m):
             mse, mse_h1 = val_scores(m)
-            return {'val_mse': mse, 'val_mse_h1': mse_h1}
+            return {'val_mse': mse_h1 if cfg['nl_stop'] == 'h1' else mse, 'val_mse_h1': mse_h1, 'val_avg': mse}
         model, history, best_epoch = gvar_nonlinear.train(model, data, score, cfg['epochs'], cfg['lr'],
                                                           cfg['weight_decay'], cfg['batch_size'], cfg['patience'],
                                                           cfg['seed'], verbose, loss, cfg['select_horizon'],
