@@ -14,10 +14,14 @@ Train the model first, then point this script at its run:
 
     python models/stgnn/train.py --model dcrnn --dataset cave_proofread
     python models/explainability/influence.py --model dcrnn --run cave_proofread_dcrnn_connectome --stride 4
+
+    python models/explainability/influence.py --model adaptive_gvar --run adaptive_gvar_sparsemax --stride 4
+    python models/explainability/influence.py --model adaptive_gvar --run adaptive_gvar_sparsemax --stride 4 --learned
 """
 import argparse
 import importlib.util
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -32,8 +36,9 @@ MODELS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(MODELS_DIR / 'GVAR'))
 sys.path.insert(0, str(MODELS_DIR))
 from common import load_session  # noqa: E402
-from data import load_graph, shift_operator  # noqa: E402
+from data import DATASETS, load_graph, shift_operator  # noqa: E402
 from gvar import GVAR  # noqa: E402
+from temporal_adaptive_gvar import AdaptiveGVAR  # noqa: E402
 
 OUT_DIR = Path(__file__).resolve().parent / 'runs'
 HISTORY = 15  # same windows as G-VAR's evaluation and the graph baselines
@@ -169,6 +174,139 @@ class GNNPredictor:
         return self.nodes_for(self.edge_index[0, ~keep])
 
 
+def adaptive_checkpoint(run):
+    """models/GVAR/checkpoints/<run>/best.pt, from adaptive_gvar.ipynb or models/GVAR/train_adaptive.py."""
+    path = MODELS_DIR / 'GVAR' / 'checkpoints' / run / 'best.pt'
+    saved = torch.load(path, map_location='cpu', weights_only=True)
+    if saved.get('model_type') != 'temporal_adaptive_gvar_v1':
+        raise ValueError(f'{path} is not an activity-dependent Adaptive-GVAR checkpoint')
+    return path, saved
+
+
+def check_same_graph(saved_S, A):
+    """The checkpoint may list neurons in another order (the model has no per-neuron parameters, so it gives the same
+    forecasts either way), but it must have been trained on the same graph: same weights and degree sequences."""
+    if torch.equal(saved_S, A):
+        return
+    signature = lambda M: (M[M != 0].sort().values, (M != 0).sum(0).sort().values, (M != 0).sum(1).sort().values)  # noqa: E731
+    for a, b in zip(signature(saved_S), signature(A)):
+        if a.shape != b.shape or not torch.allclose(a.float(), b.float(), atol=1e-6):
+            raise ValueError('The checkpoint was trained on a different graph than the one loaded for this dataset')
+
+
+class AdaptiveGVARPredictor:
+    """Activity-dependent Adaptive-GVAR (models/GVAR/temporal_adaptive_gvar.py).
+
+    Each window w is forecast with S_w = (1 - alpha) A + alpha C_w: A is the row-normalised anatomical graph and C_w
+    a graph the model infers from that window's activity. C_w does not depend on A, so removing anatomical edges
+    leaves it unchanged. It is computed once for all test windows and stored as one block-diagonal sparse matrix,
+    and each ablation only redoes the K graph hops.
+
+    learned=True also removes neuron j as a source of C_w in the per-neuron ablation. Its score is masked before the
+    sparsemax (or softmax), so each row of C_w still sums to one. Only rows where j had a nonzero weight change.
+    """
+
+    def __init__(self, run, data, past, device, learned, chunk=8):
+        path, saved = adaptive_checkpoint(run)
+        self.cfg = {**saved['config'], 'graph': saved.get('graph', 'connectome'),
+                    'graph_seed': saved.get('graph_seed', 0), 'checkpoint': str(path.relative_to(MODELS_DIR))}
+        self.N, self.device, self.learned = data['X'].shape[1], device, learned
+        self.edge_index, self.edge_weight = load_graph(data['data_dir'], self.N, self.cfg['graph'], self.cfg['graph_seed'])
+        A = self.shift(torch.ones(self.edge_index.shape[1], dtype=torch.bool))
+        check_same_graph(saved['state_dict']['S'], A.to_dense())
+        self.model = AdaptiveGVAR(A, **saved['config'])
+        self.model.load_state_dict(dict(saved['state_dict'], S=A.to_dense()))
+        self.model.to(device).eval()
+        self.A = A.to(device)
+        self.P, self.K, self.alpha = self.model.P, self.model.K, self.model.alpha
+        self.h = self.model.h.detach()
+        x = past[:, -self.P:]
+        self.x0 = x.flip(1).transpose(1, 2).contiguous().to(device)  # [W, N, P], lag 1 first
+        self.learner = self.model.graph_learner
+
+        # Learned graphs of all test windows, block-diagonal [W*N, W*N]; keep Q and K to redo rows without a source
+        W, N = len(x), self.N
+        Qs, Ks, crow, col, col_local, val = [], [], [torch.zeros(1, dtype=torch.long, device=device)], [], [], []
+        nnz = 0
+        with torch.no_grad():
+            for s in range(0, W, chunk):
+                xb = x[s:s + chunk].to(device)
+                b = len(xb)
+                _, hidden = self.learner.encoder(xb.transpose(1, 2).reshape(b * N, self.P, 1))
+                H = hidden[0].reshape(b, N, -1)
+                Q, K = self.learner.W_q(H), self.learner.W_k(H)
+                C = self.learner.normalize_scores(Q @ K.transpose(-1, -2) / math.sqrt(Q.shape[-1]))
+                if s == 0:
+                    assert torch.allclose(C, self.learner(xb), atol=1e-6)
+                Qs.append(Q)
+                Ks.append(K)
+                Cs = C.reshape(b * N, N).to_sparse_csr()
+                window = torch.arange(s, s + b, device=device).repeat_interleave(N).repeat_interleave(Cs.crow_indices().diff())
+                crow.append(Cs.crow_indices()[1:] + nnz)
+                col.append(Cs.col_indices() + window * N)
+                col_local.append(Cs.col_indices().short())
+                val.append(Cs.values())
+                nnz += Cs.values().numel()
+        self.Q, self.Kt = torch.cat(Qs), torch.cat(Ks)
+        self.C = torch.sparse_csr_tensor(torch.cat(crow), torch.cat(col), torch.cat(val), (W * N, W * N))
+        self.col_local = torch.cat(col_local)
+        print(f'learned graph: {nnz / (W * N):.1f} sources per neuron and window on average, alpha {self.alpha}')
+
+        check = past[:32, -self.P:].to(device)
+        with torch.no_grad():
+            assert torch.allclose(self.model(check).cpu(), self.predict(None, torch.arange(N))[:32], atol=1e-4)
+
+    def shift(self, keep):
+        return shift_operator(self.edge_index[:, keep], self.edge_weight[keep], self.N, 'mean')
+
+    def hop(self, A, y, delta):
+        """S_w y for every window w at once. y: [W, N, P]."""
+        W, N, P = y.shape
+        anatomical = torch.sparse.mm(A, y.transpose(0, 1).reshape(N, W * P)).reshape(N, W, P).transpose(0, 1)
+        flat = y.reshape(W * N, P)
+        learned = self.C @ flat
+        if delta is not None:
+            learned = learned + delta @ flat
+        return (1 - self.alpha) * anatomical + self.alpha * learned.reshape(W, N, P)
+
+    @torch.no_grad()
+    def without_source(self, j):
+        """Change of the block-diagonal C when neuron j is masked out of every window's learned graph."""
+        N, W = self.N, self.x0.shape[0]
+        positions = torch.nonzero(self.col_local == j).flatten()
+        rows = torch.searchsorted(self.C.crow_indices(), positions, right=True) - 1
+        r_all, c_all, v_all = [], [], []
+        for r in rows.split(2048):
+            w, i = r // N, r % N
+            z = (self.Kt[w] @ self.Q[w, i].unsqueeze(-1)).squeeze(-1) / math.sqrt(self.Q.shape[-1])  # [R, N]
+            old = self.learner.normalize_scores(z)
+            z[:, j] = -math.inf
+            change = self.learner.normalize_scores(z) - old
+            k, m = torch.nonzero(change, as_tuple=True)
+            r_all.append(r[k])
+            c_all.append(w[k] * N + m)
+            v_all.append(change[k, m])
+        index = torch.stack([torch.cat(r_all), torch.cat(c_all)]) if r_all else torch.zeros(2, 0, dtype=torch.long)
+        values = torch.cat(v_all) if v_all else torch.zeros(0)
+        return torch.sparse_coo_tensor(index.to(self.device), values.to(self.device), (W * N, W * N)).coalesce().to_sparse_csr()
+
+    @torch.no_grad()
+    def predict(self, keep, targets, drop_source=None):
+        """Forecasts [W, len(targets)] with only the anatomical edges in `keep`, and without neuron `drop_source` in
+        the learned graphs."""
+        A = self.A if keep is None else self.shift(keep).to(self.device)
+        delta = None if drop_source is None else self.without_source(drop_source)
+        y = self.x0
+        pred = y @ self.h[0]
+        for k in range(1, self.K + 1):
+            y = self.hop(A, y, delta)
+            pred = pred + y @ self.h[k]
+        return pred[:, targets.to(self.device)].cpu()
+
+    def affected(self, keep):
+        return torch.arange(self.N)  # the learned graphs connect every neuron within K hops
+
+
 def per_trial(values, trial_index, n_trials):
     """Sum [W, ...] values within each trial -> [n_trials, ...]."""
     out = torch.zeros(n_trials, *values.shape[1:], dtype=torch.float64)
@@ -185,10 +323,21 @@ def bootstrap(trial_sums, counts, n_boot, seed=0):
 
 
 def run(args):
+    if args.learned and args.model != 'adaptive_gvar':
+        raise ValueError('--learned only applies to adaptive_gvar')
     if args.model == 'gvar':
         run_dir = MODELS_DIR / 'GVAR' / 'runs' / args.run
         cfg = json.loads((run_dir / 'results.json').read_text())['config']
         data = load_session(cfg['dataset'], cfg['log_transform'], cfg['val_frac'], cfg['test_frac'], use_exog=False)
+    elif args.model == 'adaptive_gvar':
+        _, saved = adaptive_checkpoint(args.run)
+        dataset = saved['dataset']
+        if dataset not in DATASETS:
+            # adaptive_gvar_sparsemax stores the path of the copy it was trained on (cave_proofread, other neuron order)
+            print(f'Checkpoint dataset {dataset} is not in models/GVAR/data.py, using {args.dataset}')
+            dataset = args.dataset
+        pre = saved['preprocessing']
+        data = load_session(dataset, pre['log_transform'], pre['val_frac'], pre['test_frac'], use_exog=False)
     else:
         run_dir = MODELS_DIR / 'stgnn' / 'runs' / args.run
         cfg = json.loads((run_dir / 'results.json').read_text())['config']
@@ -204,12 +353,16 @@ def run(args):
 
     if args.model == 'gvar':
         model = GVARPredictor(run_dir, data, past)
+    elif args.model == 'adaptive_gvar':
+        model = AdaptiveGVARPredictor(args.run, data, past, torch.device(args.device), args.learned)
     else:
         model = GNNPredictor(run_dir, data, past, exog, torch.device(args.device), args.batch_size)
     N = model.N
     src, dst = model.edge_index
     E = src.numel() if args.max_edges is None else min(args.max_edges, src.numel())
-    senders = torch.unique(src).tolist()
+    # with --learned every neuron can send through the learned graphs, not only those with anatomical edges
+    senders = list(range(N)) if args.learned else torch.unique(src).tolist()
+    senders = senders if args.max_neurons is None else senders[:args.max_neurons]
     print(f'{args.model} {args.run}: {len(windows)} test windows in {len(trials)} trials, '
           f'{src.numel()} edges, {len(senders)} neurons with outgoing edges')
 
@@ -231,12 +384,14 @@ def run(args):
     for n, j in enumerate(senders):
         keep = src != j
         targets = model.affected(keep)
-        se = (model.predict(keep, targets) - y[:, targets]) ** 2
+        pred = model.predict(keep, targets, drop_source=j) if args.learned else model.predict(keep, targets)
+        se = (pred - y[:, targets]) ** 2
         node_trial[n] = (per_trial(se, trial_index, len(trials)) - base_trial[:, targets]).sum(1).numpy()
         if (n + 1) % 50 == 0:
             print(f'  neurons {n + 1}/{len(senders)}  {time.time() - start:.0f}s')
 
-    out = OUT_DIR / (args.out or f'{args.model}_{args.run}')
+    name = args.run if args.run.startswith(args.model) else f'{args.model}_{args.run}'
+    out = OUT_DIR / (args.out or name + ('_learned' if args.learned else ''))
     out.mkdir(parents=True, exist_ok=True)
     mean, lo, hi = bootstrap(edge_trial, counts, args.n_boot)
     base_mse = base_se.mean(0).numpy()
@@ -257,7 +412,8 @@ def run(args):
     np.savez(out / 'trial_sums.npz', edge_trial=edge_trial, node_trial=node_trial, counts=counts,
              senders=np.array(senders), edge_index=model.edge_index.numpy(), edge_weight=model.edge_weight.numpy())
     meta = {'model': args.model, 'run': args.run, 'run_config': model.cfg, 'num_nodes': N, 'stride': args.stride,
-            'n_windows': len(windows), 'n_trials': len(trials), 'n_edges_measured': E, 'complete': E == src.numel(),
+            'n_windows': len(windows), 'n_trials': len(trials), 'n_edges_measured': E, 'learned': args.learned,
+            'complete': E == src.numel() and args.max_neurons is None,
             'base_test_mse': float(base_mse.mean()), 'seconds': time.time() - start}
     (out / 'meta.json').write_text(json.dumps(meta, indent=2))
     print(f'Saved {out}  (base test mse {base_mse.mean():.4f}, {time.time() - start:.0f}s)')
@@ -265,11 +421,17 @@ def run(args):
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--model', choices=('gvar', 'dcrnn', 'graph_wavenet'), required=True)
-    parser.add_argument('--run', required=True, help='run folder in models/GVAR/runs or models/stgnn/runs')
+    parser.add_argument('--model', choices=('gvar', 'adaptive_gvar', 'dcrnn', 'graph_wavenet'), required=True)
+    parser.add_argument('--run', required=True,
+                        help='run folder in models/GVAR/runs, models/stgnn/runs or (adaptive_gvar) models/GVAR/checkpoints')
+    parser.add_argument('--learned', action='store_true',
+                        help='adaptive_gvar: also remove each neuron from the learned graphs, for every neuron')
+    parser.add_argument('--dataset', default='cave_proofread',
+                        help='adaptive_gvar: dataset to use when the checkpoint names a path that does not exist here')
     parser.add_argument('--out', default=None, help='output folder in models/explainability/runs')
     parser.add_argument('--stride', type=int, default=1, help='use every n-th test window (GNNs are slow)')
     parser.add_argument('--max_edges', type=int, default=None, help='only the first n edges, for quick tests')
+    parser.add_argument('--max_neurons', type=int, default=None, help='only the first n neurons, for quick tests')
     parser.add_argument('--n_boot', type=int, default=1000)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')

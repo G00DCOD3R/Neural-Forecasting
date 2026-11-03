@@ -2,7 +2,7 @@
 
 Tests whether a small set of recorded neurons carries a disproportionate share of predictive influence ("hubs"), and whether that influence is explained by anatomy.
 
--   `influence.py`: per-edge and per-neuron influence of a trained G-VAR, DCRNN or Graph WaveNet, measured by removing edges at test time
+-   `influence.py`: per-edge and per-neuron influence of a trained G-VAR, Adaptive-GVAR, DCRNN or Graph WaveNet, measured by removing edges at test time
 -   `hubs.py`: hub test, hub profiles, rich club and anatomy correlations on the output of `influence.py`
 
 ## Measures
@@ -23,8 +23,18 @@ python models/explainability/influence.py --model gvar --run cave_proofread_conn
 python models/explainability/influence.py --model gvar --run cave_proofread_rewired
 python models/explainability/hubs.py --run gvar_cave_proofread_connectome --null gvar_cave_proofread_rewired
 
-# DCRNN and Graph WaveNet: all steps below for both models, skipping what already exists
-PYTHON=../venv-stgnn/Scripts/python.exe bash models/explainability/run_gnn.sh
+# DCRNN, Graph WaveNet and Adaptive-GVAR: all steps below, skipping what already exists
+PYTHON=../venv-stgnn/Scripts/python.exe bash models/explainability/run_gnn.sh [dcrnn] [graph_wavenet] [adaptive_gvar]
+
+# Adaptive-GVAR by hand (models/GVAR/checkpoints/adaptive_gvar_sparsemax is already trained, on the connectome)
+python models/GVAR/train_adaptive.py --graph rewired --run_name adaptive_gvar_sparsemax_rewired
+python models/explainability/influence.py --model adaptive_gvar --run adaptive_gvar_sparsemax --stride 4
+python models/explainability/influence.py --model adaptive_gvar --run adaptive_gvar_sparsemax_rewired --stride 4
+python models/explainability/hubs.py --run adaptive_gvar_sparsemax --null adaptive_gvar_sparsemax_rewired
+# ... and with the learned graphs: add --learned, outputs end in _learned
+python models/explainability/influence.py --model adaptive_gvar --run adaptive_gvar_sparsemax --stride 4 --learned
+python models/explainability/influence.py --model adaptive_gvar --run adaptive_gvar_sparsemax_rewired --stride 4 --learned
+python models/explainability/hubs.py --run adaptive_gvar_sparsemax_learned --null adaptive_gvar_sparsemax_rewired_learned
 
 # DCRNN by hand (the connectome run cave_proofread_dcrnn_h1 is already trained)
 python models/stgnn/train.py --model dcrnn --dataset cave_proofread --graph rewired --run_name cave_proofread_dcrnn_rewired_h1
@@ -41,6 +51,13 @@ python models/explainability/hubs.py --run graph_wavenet_cave_proofread_gwn_fixe
 
 The GNN steps need the torch-spatiotemporal environment from `models/stgnn/requirements.txt` (torch < 2.13), not the main `venv`. `gnn_influence.ipynb` installs it and runs `run_gnn.sh` on a Kaggle or Colab GPU, saving each finished step to Drive or `/kaggle/working`.
 
+**Adaptive-GVAR** (`models/GVAR/temporal_adaptive_gvar.py`) forecasts each window with $S_w = (1-\alpha)A + \alpha C_w$. Here $A$ is the anatomical graph, $C_w$ is a sparse graph inferred from the window's activity, and $\alpha = 0.75$. Two analyses:
+
+-   **Anatomical edges only** (default): the same ablations and hub test as for the other models. $C_w$ is left unchanged, so this measures how much the model relies on the connectome.
+-   **`--learned`**: the per-neuron ablation also removes neuron j as a source from every $C_w$. Its score is masked before the sparsemax, so each row still sums to one. Every one of the 1,059 neurons is a sender, and the hub test compares against the rewired-graph model only, because most senders have no anatomical edges. The per-edge results are the same as without `--learned`.
+
+$C_w$ does not depend on $A$, so `influence.py` computes it once for all test windows and every ablation only redoes the $K$ graph hops. The `adaptive_gvar_sparsemax` checkpoint was trained on a copy of `cave_proofread` that orders neurons differently. The model has no per-neuron parameters, so it gives the same forecasts on `cave_proofread` (validation MSE 0.3186 in both); `influence.py` checks that the graphs match.
+
 `--graph rewired` keeps every neuron's in- and out-degree and shuffles who connects to whom, so the random graph has exactly the same wiring concentration as the connectome. `--graph random` places the same number of edges between random pairs.
 
 G-VAR is linear, so `influence.py` computes ablations in closed form and the whole analysis takes about 15 seconds. The GNNs need one forward pass over the test set per removed edge (947 edges + 104 neurons on `cave_proofread`, 2,908 + 715 on `cave_all`). Each pass only runs on the connected component of the removed edge, since nothing outside it can change; on `cave_proofread` that is 539 of the 1,059 neurons. On a 12-core CPU with `--stride 4` this takes about 7 hours per DCRNN run and 11 hours per Graph WaveNet run. `--stride 4` uses every fourth test window, which overlap heavily anyway. `--max_edges` runs a quick test.
@@ -55,3 +72,4 @@ Outputs go to `models/explainability/runs/<model>_<run>/`: `edges.csv`, `neurons
 -   **(b) includes indirect effects.** With K > 1 hops (G-VAR) or several message-passing steps (GNNs), removing j's edges also changes neurons further downstream. (a) only counts the direct targets, so `redundancy_gap` is not purely redundancy.
 -   **Negative influence counts as zero in the shares.** Removing some edges lowers the test MSE; those neurons add nothing to the total.
 -   **Graph WaveNet's learned adjacency** is not affected by removing edges, so train it with `--no_learned_adjacency`.
+-   **Adaptive-GVAR only gives the connectome a weight of 1 − α = 0.25**, so its anatomical-edge influence is expected to be small. With `--learned`, removing a source changes only the rows of $C_w$ where it had a nonzero weight; the remaining weights of those rows are recomputed by the sparsemax.

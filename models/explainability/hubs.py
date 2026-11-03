@@ -95,9 +95,14 @@ def run(args):
     if args.null:
         concentration['null_influence_drop'] = drop_share(args.null, f, args.n_boot)
     lower = concentration['influence_drop'][1]
-    compare = [concentration['wiring_out_degree'], concentration['wiring_out_synapses']]
+    # With --learned (Adaptive-GVAR) every neuron is a sender, most without anatomical edges, so the wiring shares are
+    # near 100% and only the random-graph model is a fair comparison
+    learned = meta.get('learned', False)
+    compare = [] if learned else [concentration['wiring_out_degree'], concentration['wiring_out_synapses']]
     if args.null:
         compare.append(concentration['null_influence_drop'][2])
+    if not compare:
+        raise ValueError('--null is required for runs of influence.py --learned')
     verdict = bool(lower > max(compare))
 
     # 2. How hubs act
@@ -139,14 +144,15 @@ def run(args):
         ax.plot(*lorenz(v.values.astype(float)), label=name)
     ax.plot([0, 1], [0, 1], color='grey', lw=0.8, ls='--', label='equal share')
     ax.axvline(f, color='grey', lw=0.8)
-    ax.set(xlabel='fraction of neurons with outgoing edges (most influential first)', ylabel='cumulative share',
+    senders = 'all neurons' if learned else 'neurons with outgoing edges'
+    ax.set(xlabel=f'fraction of {senders} (most influential first)', ylabel='cumulative share',
            title=args.run)
     ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(out / 'concentration.png', dpi=150)
 
     p, lo, hi = concentration['influence_drop']
-    print(f"{args.run}: {len(neurons)} neurons with outgoing edges, top {f:.0%} = {k}")
+    print(f"{args.run}: {len(neurons)} {senders}, top {f:.0%} = {k}")
     print(f"  top-{f:.0%} share  influence (drop) {p:.1%} [{lo:.1%}, {hi:.1%}]   sum of edges "
           f"{concentration['influence_sum_of_edges']:.1%}")
     print(f"                 out-degree {concentration['wiring_out_degree']:.1%}   out synapses "
