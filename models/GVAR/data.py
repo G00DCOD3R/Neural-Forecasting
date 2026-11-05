@@ -1,5 +1,6 @@
 """Data loading for G-VAR: chronological split, normalisation, graph shift operator."""
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,9 @@ import pandas as pd
 import torch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+from exogenous import load_exogenous  # noqa: E402
+
 DATASETS = {
     'cave_proofread': REPO_ROOT / 'processed' / 'session_4_7_cave_proofread',
     'cave_all': REPO_ROOT / 'processed' / 'session_4_7_cave_all',
@@ -22,7 +26,9 @@ def make_split(trial_start, val_frac=0.15, test_frac=0.15):
     return np.where(t >= 1 - test_frac, 'test', np.where(t >= 1 - test_frac - val_frac, 'val', 'train'))
 
 
-def load_data(dataset, log_transform=True, val_frac=0.15, test_frac=0.15):
+# video_pcs, behaviour, fill_missing: exogenous inputs, stored as data['U'] [T, E] (see exogenous.py)
+def load_data(dataset, log_transform=True, val_frac=0.15, test_frac=0.15, video_pcs=0, behaviour=(),
+              fill_missing=False):
     """Load session, normalise the responses, and split trials chronologically into train/val/test."""
     data_dir = DATASETS.get(dataset, dataset)
     X = np.load(os.path.join(data_dir, 'X_features.npy')).astype(np.float32)
@@ -41,14 +47,19 @@ def load_data(dataset, log_transform=True, val_frac=0.15, test_frac=0.15):
     mu, sd = X[train_rows].mean(0), X[train_rows].std(0) + 1e-6
     X = (X - mu) / sd
 
-    return {'X': torch.from_numpy(X), 'trial_id': trial_id, 'split': split, 'trial_start': trial_start,
-            'data_dir': str(data_dir)}
+    # lowest training value per neuron, i.e. silent
+    floor = X[train_rows].min(0)
+    exo = load_exogenous(data_dir, train_rows, video_pcs, tuple(behaviour), fill_missing)
+    return {'X': torch.from_numpy(X), 'floor': torch.from_numpy(floor), 'U': torch.from_numpy(exo['U']),
+            'known_ahead': exo['known_ahead'],
+            'exo_names': exo['names'], 'video_explained': exo['video_explained'],
+            'trial_id': trial_id, 'split': split, 'trial_start': trial_start, 'data_dir': str(data_dir)}
 
 
-def trials(data, which):
-    """List of [L, N] tensors, one per trial of the given split."""
+def trials(data, which, key='X'):
+    """List of [L, N] tensors, one per trial of the given split."""  # [L, E] for key='U'
     ids = np.flatnonzero(data['split'] == which)
-    return [data['X'][data['trial_id'] == t] for t in ids]
+    return [data[key][data['trial_id'] == t] for t in ids]
 
 
 def load_graph(data_dir, num_nodes, graph='connectome', seed=0):
@@ -56,11 +67,14 @@ def load_graph(data_dir, num_nodes, graph='connectome', seed=0):
 
     connectome: the synaptic edges, weighted by synapse count
     random:     as many edges as the connectome between random pairs, shuffled weights
+    none:       no edges, so S = 0 and every graph term vanishes (the no-graph ablation at fixed P, K)
     """
     edge_index = torch.load(os.path.join(data_dir, 'edge_index.pt'))
     edge_weight = torch.load(os.path.join(data_dir, 'edge_weight.pt'))
     if graph == 'connectome':
         return edge_index, edge_weight
+    if graph == 'none':
+        return edge_index[:, :0], edge_weight[:0]
     if graph == 'random':
         g = torch.Generator().manual_seed(seed)
         E = edge_index.shape[1]
