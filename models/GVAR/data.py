@@ -67,11 +67,14 @@ def load_graph(data_dir, num_nodes, graph='connectome', seed=0):
 
     connectome: the synaptic edges, weighted by synapse count
     random:     as many edges as the connectome between random pairs, shuffled weights
+    none:       no edges, so S = 0 and every graph term vanishes (the no-graph ablation at fixed P, K)
     """
     edge_index = torch.load(os.path.join(data_dir, 'edge_index.pt'))
     edge_weight = torch.load(os.path.join(data_dir, 'edge_weight.pt'))
     if graph == 'connectome':
         return edge_index, edge_weight
+    if graph == 'none':
+        return edge_index[:, :0], edge_weight[:0]
     if graph == 'random':
         g = torch.Generator().manual_seed(seed)
         E = edge_index.shape[1]

@@ -102,6 +102,8 @@ def default_run_name(cfg):
         name += f"_v{cfg['video_pcs']}"
     if cfg['behaviour']:
         name += '_' + cfg['behaviour'].replace(',', '+')
+    if cfg['seed']:
+        name += f"_s{cfg['seed']}"
     return name
 
 
@@ -136,22 +138,28 @@ def load_run(run_name, data):
     return model, results
 
 
+# Whether run_name is saved with the config cfg
+def is_saved(cfg, run_name):
+    saved = RUNS_DIR / run_name / 'results.json'
+    if not saved.exists():
+        return False
+    with open(saved) as f:
+        saved_cfg = json.load(f)['config']
+    # runs saved before an option existed used its default
+    return all(saved_cfg.get(k, DEFAULTS[k]) == v for k, v in {**DEFAULTS, **cfg}.items() if k != 'device')
+
+
 # Load the saved run if its config matches cfg, otherwise fit (or train) and save it
 def run_or_load(cfg=None, data=None, run_name=None, retrain=False, verbose=True):
     cfg = {**DEFAULTS, **(cfg or {})}
     run_name = run_name or default_run_name(cfg)
-    saved = RUNS_DIR / run_name / 'results.json'
-    if saved.exists() and not retrain:
-        with open(saved) as f:
-            saved_cfg = json.load(f)['config']
-        # runs saved before an option existed used its default
-        if all(saved_cfg.get(k, DEFAULTS[k]) == v for k, v in cfg.items() if k != 'device'):
-            if data is None:
-                data = load_data(cfg['dataset'], cfg['log_transform'], cfg['val_frac'], cfg['test_frac'],
-                                 cfg['video_pcs'], tuple(b for b in cfg['behaviour'].split(',') if b))
-            return load_run(run_name, data)
-        if verbose:
-            print(f'{run_name}: saved config differs, retraining')
+    if not retrain and is_saved(cfg, run_name):
+        if data is None:
+            data = load_data(cfg['dataset'], cfg['log_transform'], cfg['val_frac'], cfg['test_frac'],
+                             cfg['video_pcs'], tuple(b for b in cfg['behaviour'].split(',') if b))
+        return load_run(run_name, data)
+    if verbose and (RUNS_DIR / run_name / 'results.json').exists():
+        print(f'{run_name}: saved config differs, retraining')
     return run(cfg, data, run_name, verbose)
 
 
