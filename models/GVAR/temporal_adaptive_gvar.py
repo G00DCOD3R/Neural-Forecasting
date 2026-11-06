@@ -127,7 +127,7 @@ class AdaptiveGVAR(GVAR):
         for _ in range(self.K):
             shifted = S @ shifted
             features.append(shifted)
-        return torch.stack(features, dim=2)  # [B, N, K+1, P]
+        return torch.stack(features, dim=2).unsqueeze(2)  # [B, N, 1, K+1, P]
 
     def fit(self, *args, **kwargs):
         raise NotImplementedError('Train jointly with forecasting MSE; see adaptive_gvar.ipynb.')
