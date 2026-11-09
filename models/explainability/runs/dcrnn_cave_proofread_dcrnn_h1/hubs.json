@@ -1,0 +1,231 @@
+{
+  "run": "dcrnn_cave_proofread_dcrnn_h1",
+  "null": "dcrnn_cave_proofread_dcrnn_rewired_h1",
+  "top_fraction": 0.2,
+  "n_senders": 104,
+  "n_hubs": 21,
+  "hub_measure": "drop_influence",
+  "concentration": {
+    "influence_drop": [
+      0.5514144540742622,
+      0.5227833352775232,
+      0.6005141868027437
+    ],
+    "influence_sum_of_edges": 0.6061300350053213,
+    "wiring_out_degree": 0.4192185850052798,
+    "wiring_out_synapses": 0.4306083650190114,
+    "null_influence_drop": [
+      0.5567226144652191,
+      0.5213900736085768,
+      0.6068505091861203
+    ]
+  },
+  "evidence_for_hubs": false,
+  "rich_club": {
+    "hub_to_hub_edges": 12,
+    "rewired_mean": 8.631,
+    "ratio": 1.3903371567605143,
+    "p_value": 0.1038961038961039,
+    "mean_influence_hub_to_hub": 0.0021671922473125668,
+    "mean_influence_other": 0.001329308377351791
+  },
+  "anatomy": {
+    "edge_influence_vs_synapses": 0.005122645823008065,
+    "neuron_influence_vs_out_degree": 0.600593901829217,
+    "neuron_influence_vs_out_synapses": 0.5956273017166481,
+    "edges_with_ci_above_0": 222,
+    "edges_with_ci_below_0": 83,
+    "n_edges": 947
+  },
+  "hubs": [
+    {
+      "neuron": 302,
+      "out_degree": 22,
+      "out_synapses": 27.0,
+      "drop_influence": 0.122905549710247,
+      "n_edges_ci_above_0": 6.0,
+      "top_edge_share": 0.1770790422613215,
+      "redundancy_gap": -0.0465841180670811
+    },
+    {
+      "neuron": 599,
+      "out_degree": 28,
+      "out_synapses": 31.0,
+      "drop_influence": 0.0944981542148384,
+      "n_edges_ci_above_0": 11.0,
+      "top_edge_share": 0.13006151003487657,
+      "redundancy_gap": -0.0116336217786751
+    },
+    {
+      "neuron": 15,
+      "out_degree": 28,
+      "out_synapses": 33.0,
+      "drop_influence": 0.0882787938960099,
+      "n_edges_ci_above_0": 9.0,
+      "top_edge_share": 0.17369771926005245,
+      "redundancy_gap": -0.0010993594771661
+    },
+    {
+      "neuron": 22,
+      "out_degree": 16,
+      "out_synapses": 17.0,
+      "drop_influence": 0.0827795291839975,
+      "n_edges_ci_above_0": 5.0,
+      "top_edge_share": 0.20380312209994714,
+      "redundancy_gap": -0.0273482866601223
+    },
+    {
+      "neuron": 289,
+      "out_degree": 11,
+      "out_synapses": 11.0,
+      "drop_influence": 0.078116527874386,
+      "n_edges_ci_above_0": 4.0,
+      "top_edge_share": 0.18929003206280784,
+      "redundancy_gap": -0.0263955847706709
+    },
+    {
+      "neuron": 120,
+      "out_degree": 26,
+      "out_synapses": 34.0,
+      "drop_influence": 0.0726018186158417,
+      "n_edges_ci_above_0": 8.0,
+      "top_edge_share": 0.20231793674042012,
+      "redundancy_gap": -0.0232381967093085
+    },
+    {
+      "neuron": 0,
+      "out_degree": 25,
+      "out_synapses": 26.0,
+      "drop_influence": 0.0717255262480352,
+      "n_edges_ci_above_0": 8.0,
+      "top_edge_share": 0.1843239705673574,
+      "redundancy_gap": 0.0066389682601447
+    },
+    {
+      "neuron": 498,
+      "out_degree": 19,
+      "out_synapses": 22.0,
+      "drop_influence": 0.0601755353423077,
+      "n_edges_ci_above_0": 3.0,
+      "top_edge_share": 0.3640871245097766,
+      "redundancy_gap": -0.0454717833387307
+    },
+    {
+      "neuron": 561,
+      "out_degree": 16,
+      "out_synapses": 19.0,
+      "drop_influence": 0.0601536408300071,
+      "n_edges_ci_above_0": 4.0,
+      "top_edge_share": 0.21424383990763665,
+      "redundancy_gap": -0.0107978249473939
+    },
+    {
+      "neuron": 544,
+      "out_degree": 10,
+      "out_synapses": 10.0,
+      "drop_influence": 0.059747213440351,
+      "n_edges_ci_above_0": 3.0,
+      "top_edge_share": 0.44063431941387365,
+      "redundancy_gap": -0.0078034444717073
+    },
+    {
+      "neuron": 586,
+      "out_degree": 9,
+      "out_synapses": 10.0,
+      "drop_influence": 0.0580890829294386,
+      "n_edges_ci_above_0": 2.0,
+      "top_edge_share": 0.6000722533852046,
+      "redundancy_gap": -0.0301464904313939
+    },
+    {
+      "neuron": 747,
+      "out_degree": 8,
+      "out_synapses": 8.0,
+      "drop_influence": 0.0576492485774226,
+      "n_edges_ci_above_0": 5.0,
+      "top_edge_share": 0.21758996494915794,
+      "redundancy_gap": -0.0017341406947975
+    },
+    {
+      "neuron": 564,
+      "out_degree": 16,
+      "out_synapses": 19.0,
+      "drop_influence": 0.0556736323510218,
+      "n_edges_ci_above_0": 5.0,
+      "top_edge_share": 0.2422649238596847,
+      "redundancy_gap": -0.0111120995327026
+    },
+    {
+      "neuron": 636,
+      "out_degree": 13,
+      "out_synapses": 13.0,
+      "drop_influence": 0.0547734716241615,
+      "n_edges_ci_above_0": 4.0,
+      "top_edge_share": 0.4288003041151762,
+      "redundancy_gap": -0.0400149753803719
+    },
+    {
+      "neuron": 368,
+      "out_degree": 13,
+      "out_synapses": 15.0,
+      "drop_influence": 0.0497622322634554,
+      "n_edges_ci_above_0": 3.0,
+      "top_edge_share": 0.2737783389559381,
+      "redundancy_gap": -0.0251770764537265
+    },
+    {
+      "neuron": 522,
+      "out_degree": 11,
+      "out_synapses": 15.0,
+      "drop_influence": 0.0461998051223187,
+      "n_edges_ci_above_0": 2.0,
+      "top_edge_share": 0.5633066282410885,
+      "redundancy_gap": -0.0325293393433663
+    },
+    {
+      "neuron": 1044,
+      "out_degree": 11,
+      "out_synapses": 12.0,
+      "drop_influence": 0.0434359465098325,
+      "n_edges_ci_above_0": 4.0,
+      "top_edge_share": 0.28854895838052974,
+      "redundancy_gap": -0.0162011558251443
+    },
+    {
+      "neuron": 755,
+      "out_degree": 22,
+      "out_synapses": 23.0,
+      "drop_influence": 0.041089874756192,
+      "n_edges_ci_above_0": 4.0,
+      "top_edge_share": 0.23227024415091146,
+      "redundancy_gap": -0.0243835859305113
+    },
+    {
+      "neuron": 130,
+      "out_degree": 15,
+      "out_synapses": 16.0,
+      "drop_influence": 0.0389189783873053,
+      "n_edges_ci_above_0": 4.0,
+      "top_edge_share": 0.2710890421633526,
+      "redundancy_gap": -0.0327941791290832
+    },
+    {
+      "neuron": 437,
+      "out_degree": 4,
+      "out_synapses": 4.0,
+      "drop_influence": 0.0386947229397234,
+      "n_edges_ci_above_0": 1.0,
+      "top_edge_share": 0.5589700296709994,
+      "redundancy_gap": -0.0303477377216569
+    },
+    {
+      "neuron": 24,
+      "out_degree": 16,
+      "out_synapses": 21.0,
+      "drop_influence": 0.0379930236475579,
+      "n_edges_ci_above_0": 2.0,
+      "top_edge_share": 0.33230975446269745,
+      "redundancy_gap": -0.0271559708326773
+    }
+  ]
+}

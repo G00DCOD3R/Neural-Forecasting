@@ -1,0 +1,24 @@
+{
+  "model": "adaptive_gvar",
+  "run": "adaptive_gvar_sparsemax",
+  "run_config": {
+    "P": 15,
+    "K": 3,
+    "alpha": 0.75,
+    "hidden_dim": 16,
+    "activation": "sparsemax",
+    "tau": 1.0,
+    "graph": "connectome",
+    "graph_seed": 0,
+    "checkpoint": "GVAR/checkpoints/adaptive_gvar_sparsemax/best.pt"
+  },
+  "num_nodes": 1059,
+  "stride": 4,
+  "n_windows": 1178,
+  "n_trials": 69,
+  "n_edges_measured": 947,
+  "learned": false,
+  "complete": true,
+  "base_test_mse": 0.3066023588180542,
+  "seconds": 141.7578957080841
+}

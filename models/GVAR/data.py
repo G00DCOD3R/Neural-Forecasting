@@ -82,7 +82,31 @@ def load_graph(data_dir, num_nodes, graph='connectome', seed=0):
         src, off = flat // (num_nodes - 1), flat % (num_nodes - 1)
         dst = off + (off >= src).long()  # skip the diagonal
         return torch.stack([src, dst]), edge_weight[torch.randperm(E, generator=g)]
+    if graph == 'rewired':
+        return rewire(edge_index, num_nodes, seed), edge_weight
     raise ValueError(f"Unknown graph: {graph}")
+
+
+def rewire(edge_index, num_nodes, seed=0, max_rounds=1000):
+    """Degree-preserving randomisation: shuffle the edge targets, then swap away self-loops and repeated edges.
+
+    Sources stay in place, so out-degree and each edge's weight are kept; targets are permuted, so in-degree is kept.
+    """
+    rng = np.random.default_rng(seed)
+    src, dst = edge_index.numpy().copy()
+    dst = rng.permutation(dst)
+    for _ in range(max_rounds):
+        key = src.astype(np.int64) * num_nodes + dst
+        _, first = np.unique(key, return_index=True)
+        bad = np.ones(len(key), bool)
+        bad[first] = False  # later copies of an edge are bad
+        bad |= src == dst
+        if not bad.any():
+            return torch.from_numpy(np.stack([src, dst])).long()
+        for i in np.flatnonzero(bad):
+            j = rng.integers(len(dst))
+            dst[i], dst[j] = dst[j], dst[i]
+    raise RuntimeError('Could not rewire without self-loops or repeated edges')
 
 
 def shift_operator(edge_index, edge_weight, num_nodes, kind='mean', undirected=False):

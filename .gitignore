@@ -10,6 +10,7 @@ processed/
 *.pt
 *.pkl
 *.csv
+!models/explainability/runs/**/*.csv
 
 # 2. Python Virtual Environments
 venv/
